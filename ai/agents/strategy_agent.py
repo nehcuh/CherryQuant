@@ -197,8 +197,16 @@ class StrategyAgent:
                 self.status = AgentStatus.IDLE
                 return
 
+            # 获取要处理的品种列表
+            symbols_to_process = self.config.symbols or self.config.commodities or []
+
+            if not symbols_to_process:
+                logger.debug(f"策略 {self.config.strategy_id} 暂无交易品种")
+                self.status = AgentStatus.IDLE
+                return
+
             # 为每个关注的品种生成决策
-            for symbol in self.config.symbols:
+            for symbol in symbols_to_process:
                 try:
                     await self._process_symbol(symbol)
                 except Exception as e:

@@ -89,6 +89,31 @@ def initialize_services(
     db_manager = dm
     ai_logger = al
 
+# ==================== 根路径 ====================
+
+@app.get("/")
+async def root():
+    """API根路径 - 欢迎页面"""
+    return {
+        "name": "CherryQuant API",
+        "version": "1.0.0",
+        "description": "多代理AI交易系统监控和管理API",
+        "status": "running",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": {
+            "status": "/api/v1/status",
+            "health": "/api/v1/health",
+            "strategies": "/api/v1/strategies",
+            "trades": "/api/v1/trades",
+            "positions": "/api/v1/positions",
+            "risk": "/api/v1/risk/status",
+            "performance": "/api/v1/performance/portfolio",
+            "docs": "/docs",
+            "websocket": "/ws"
+        },
+        "documentation": "/docs"
+    }
+
 # ==================== 系统状态接口 ====================
 
 @app.get("/api/v1/status")
