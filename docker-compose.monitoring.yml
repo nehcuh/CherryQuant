@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  # Grafana监控面板
+  grafana:
+    image: grafana/grafana:9.5.0
+    container_name: cherryquant-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - ./web/grafana/provisioning:/etc/grafana/provisioning
+      - ./web/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  # Prometheus指标收集
+  prometheus:
+    image: prom/prometheus:v2.40.0
+    container_name: cherryquant-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-storage:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+
+  # PostgreSQL数据库（已存在的服务）
+  postgres:
+    image: timescale/timescaledb:2.8.1-pg14
+    container_name: cherryquant-postgres
+    environment:
+      POSTGRES_DB: cherryquant
+      POSTGRES_USER: cherryquant
+      POSTGRES_PASSWORD: cherryquant123
+      POSTGRES_HOST_AUTH_METHOD: md5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-timescaledb.sql:/docker-entrypoint-initdb.d/init-timescaledb.sql
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+
+  # Redis缓存
+  redis:
+    image: redis:7.0-alpine
+    container_name: cherryquant-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:1.23-alpine
+    container_name: cherryquant-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./web/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./web/nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - grafana
+      - api
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+
+  # FastAPI服务
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: cherryquant-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://cherryquant:cherryquant123@postgres:5432/cherryquant
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+
+  # Node Exporter系统监控
+  node-exporter:
+    image: prom/node-exporter:v1.5.0
+    container_name: cherryquant-node-exporter
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.rootfs=/host'
+    volumes:
+      - '/:/host:ro,rslave'
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+
+volumes:
+  grafana-storage:
+  prometheus-storage:
+  postgres-data:
+  redis-data:
+
+networks:
+  cherryquant-network:
+    driver: bridge

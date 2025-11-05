@@ -1,0 +1,68 @@
+{
+  "strategies": [
+    {
+      "strategy_id": "trend_following_01",
+      "strategy_name": "趋势跟踪策略 01",
+      "symbols": ["rb2501", "i2501", "j2501"],
+      "initial_capital": 100000,
+      "max_position_size": 5,
+      "max_positions": 2,
+      "leverage": 3.0,
+      "risk_per_trade": 0.02,
+      "decision_interval": 300,
+      "confidence_threshold": 0.6,
+      "ai_model": "gpt-4",
+      "ai_temperature": 0.1,
+      "is_active": true,
+      "manual_override": false
+    },
+    {
+      "strategy_id": "mean_reversion_01",
+      "strategy_name": "均值回归策略 01",
+      "symbols": ["cu2501", "al2501"],
+      "initial_capital": 80000,
+      "max_position_size": 3,
+      "max_positions": 1,
+      "leverage": 2.0,
+      "risk_per_trade": 0.015,
+      "decision_interval": 180,
+      "confidence_threshold": 0.5,
+      "ai_model": "gpt-4",
+      "ai_temperature": 0.2,
+      "is_active": true,
+      "manual_override": false
+    },
+    {
+      "strategy_id": "breakout_01",
+      "strategy_name": "突破策略 01",
+      "symbols": ["au2501", "ag2501"],
+      "initial_capital": 120000,
+      "max_position_size": 4,
+      "max_positions": 2,
+      "leverage": 2.5,
+      "risk_per_trade": 0.025,
+      "decision_interval": 240,
+      "confidence_threshold": 0.7,
+      "ai_model": "gpt-4",
+      "ai_temperature": 0.05,
+      "is_active": false,
+      "manual_override": false
+    },
+    {
+      "strategy_id": "arbitrage_01",
+      "strategy_name": "套利策略 01",
+      "symbols": ["rb2501", "i2501", "j2501", "jm2501"],
+      "initial_capital": 150000,
+      "max_position_size": 8,
+      "max_positions": 3,
+      "leverage": 1.5,
+      "risk_per_trade": 0.01,
+      "decision_interval": 120,
+      "confidence_threshold": 0.8,
+      "ai_model": "gpt-4",
+      "ai_temperature": 0.0,
+      "is_active": false,
+      "manual_override": false
+    }
+  ]
+}

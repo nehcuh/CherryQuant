@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 时序数据库
+  postgresql:
+    image: timescale/timescaledb:latest-pg14
+    container_name: cherryquant-postgres
+    environment:
+      POSTGRES_DB: cherryquant
+      POSTGRES_USER: cherryquant
+      POSTGRES_PASSWORD: cherryquant123
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cherryquant -d cherryquant"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis 缓存数据库
+  redis:
+    image: redis:7-alpine
+    container_name: cherryquant-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # InfluxDB 备选时序数据库
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: cherryquant-influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: admin123456
+      DOCKER_INFLUXDB_INIT_ORG: cherryquant
+      DOCKER_INFLUXDB_INIT_BUCKET: market_data
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: cherryquant-super-secret-token
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8086/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana 数据可视化
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cherryquant-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: cherryquant123
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+    depends_on:
+      - postgresql
+      - influxdb
+
+  # pgAdmin PostgreSQL管理界面
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: cherryquant-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@cherryquant.com
+      PGADMIN_DEFAULT_PASSWORD: cherryquant123
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - cherryquant-network
+    restart: unless-stopped
+    depends_on:
+      - postgresql
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  influxdb_data:
+    driver: local
+  influxdb_config:
+    driver: local
+  grafana_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  cherryquant-network:
+    driver: bridge

@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  tester:
+    platform: linux/amd64
+    build:
+      context: ./docker/test
+      dockerfile: Dockerfile
+    container_name: cherryquant-tester
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      # Override DB config to use service hostnames inside the Compose network
+      - ./docker/overrides/database_config.docker.py:/workspace/config/database_config.py:ro
+      # Caches to speed up repeated uv installs
+      - uv_cache:/root/.cache/uv
+      - pip_cache:/root/.cache/pip
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      UV_LINK_MODE: "copy"
+    networks:
+      - cherryquant-network
+    depends_on:
+      - postgresql
+      - redis
+      - influxdb
+    tty: true
+    command: bash -lc "sleep infinity"
+
+volumes:
+  uv_cache: {}
+  pip_cache: {}
+
+networks:
+  cherryquant-network:
+    name: ${COMPOSE_PROJECT_NAME:-cherryquant}_cherryquant-network
+    external: false
