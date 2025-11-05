@@ -63,7 +63,8 @@ async def test_ai_connection():
 
     # 测试真实连接
     try:
-        engine = AISelectionEngine()
+        tushare_token = os.getenv("TUSHARE_TOKEN")
+        engine = AISelectionEngine(tushare_token=tushare_token)
         if await engine.test_connection():
             logger.info("✅ AI连接测试成功")
             return True
@@ -200,7 +201,8 @@ async def ai_selection_demo():
     logger.info("=" * 80)
 
     # 初始化AI选择引擎
-    engine = AISelectionEngine()
+    tushare_token = os.getenv("TUSHARE_TOKEN")
+    engine = AISelectionEngine(tushare_token=tushare_token)
 
     # 模拟账户信息
     account_info = {

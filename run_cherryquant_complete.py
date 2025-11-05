@@ -226,7 +226,7 @@ class CherryQuantSystem:
             if self.realtime_recorder:
                 try:
                     # 获取要订阅的合约列表（从策略配置中）
-                    vt_symbols = self._get_subscription_symbols()
+                    vt_symbols = await self._get_subscription_symbols()
                     await self.realtime_recorder.start(vt_symbols)
                     logger.info(f"✅ RealtimeRecorder 已启动，订阅: {vt_symbols}")
                 except Exception as e:
@@ -343,23 +343,70 @@ class CherryQuantSystem:
         except Exception as e:
             logger.error(f"生成系统报告失败: {e}")
 
-    def _get_subscription_symbols(self) -> List[str]:
-        """获取需要订阅的合约列表"""
+    async def _get_subscription_symbols(self) -> List[str]:
+        """获取需要订阅的合约列表（支持品种池配置）"""
         vt_symbols = []
         try:
-            if self.agent_manager and self.agent_manager.active_agents:
-                for agent_id, agent in self.agent_manager.active_agents.items():
-                    if hasattr(agent, 'config') and 'symbols' in agent.config:
-                        symbols = agent.config['symbols']
-                        exchange = agent.config.get('exchange', 'SHFE')
-                        for symbol in symbols:
-                            vt_symbol = f"{symbol}.{exchange}"
-                            if vt_symbol not in vt_symbols:
+            if self.agent_manager and self.agent_manager.agents:
+                # 导入合约解析器
+                try:
+                    from adapters.data_adapter.contract_resolver import get_contract_resolver
+                    resolver = get_contract_resolver(self.tushare_token)
+                except Exception as e:
+                    logger.warning(f"合约解析器初始化失败: {e}")
+                    resolver = None
+
+                # 收集所有需要的品种
+                all_commodities = set()
+
+                for agent_id, agent in self.agent_manager.agents.items():
+                    if not hasattr(agent, 'config'):
+                        continue
+
+                    config = agent.config
+
+                    # 优先使用 commodities（品种代码列表）
+                    if hasattr(config, 'commodities') and config.commodities:
+                        all_commodities.update(config.commodities)
+                        logger.debug(f"策略 {agent_id} 使用品种池: {config.commodities}")
+
+                    # 向后兼容：支持直接指定的symbols
+                    elif hasattr(config, 'symbols') and config.symbols:
+                        # 直接使用symbols作为合约代码
+                        for symbol in config.symbols:
+                            # 假设symbols已经是完整合约代码，需要解析交易所
+                            if '.' in symbol:
+                                vt_symbols.append(symbol)
+                            else:
+                                # 推断交易所
+                                from adapters.data_adapter.contract_resolver import COMMODITY_EXCHANGE_MAP
+                                commodity = symbol[:2].lower() if len(symbol) > 2 else symbol.lower()
+                                exchange = COMMODITY_EXCHANGE_MAP.get(commodity, 'SHFE')
+                                vt_symbols.append(f"{symbol}.{exchange}")
+
+                # 解析品种为主力合约
+                if all_commodities and resolver:
+                    logger.info(f"📦 解析 {len(all_commodities)} 个品种的主力合约...")
+                    contracts_map = await resolver.batch_resolve_contracts(list(all_commodities))
+
+                    # 构造vt_symbols
+                    for commodity, contract in contracts_map.items():
+                        if contract:
+                            vt_symbol = await resolver.resolve_vt_symbol(commodity)
+                            if vt_symbol and vt_symbol not in vt_symbols:
                                 vt_symbols.append(vt_symbol)
+                                logger.debug(f"订阅品种 {commodity} 主力合约: {vt_symbol}")
+
+                if not vt_symbols:
+                    logger.warning("⚠️ 未找到任何可订阅的合约，使用默认合约")
+                    vt_symbols = ['rb2501.SHFE']
+
         except Exception as e:
-            logger.warning(f"获取订阅合约列表失败: {e}")
+            logger.error(f"获取订阅合约列表失败: {e}", exc_info=True)
             # 使用默认合约
-            vt_symbols = [os.getenv('DEFAULT_SYMBOL', 'rb') + '.SHFE']
+            vt_symbols = ['rb2501.SHFE']
+
+        logger.info(f"✅ 将订阅 {len(vt_symbols)} 个合约: {vt_symbols}")
         return vt_symbols
 
     async def stop(self) -> None:

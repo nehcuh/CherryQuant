@@ -41,7 +41,6 @@ class StrategyConfig:
     """策略配置"""
     strategy_id: str
     strategy_name: str
-    symbols: List[str]
     initial_capital: float
     max_position_size: int
     max_positions: int
@@ -53,6 +52,16 @@ class StrategyConfig:
     ai_temperature: float = 0.1
     is_active: bool = True
     manual_override: bool = False
+
+    # 新增：品种池配置
+    commodity_pool: Optional[str] = None  # 品种池名称 (如 "black", "metal", "all")
+    max_symbols: int = 3  # AI可选择的最大品种数
+    selection_mode: str = "ai_driven"  # ai_driven 或 manual
+    description: Optional[str] = None
+
+    # 向后兼容：支持直接指定品种列表
+    symbols: Optional[List[str]] = None
+    commodities: Optional[List[str]] = None  # 品种代码列表
 
 @dataclass
 class Position:

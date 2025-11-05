@@ -75,7 +75,29 @@ class AgentManager:
             with open(config_file, 'r', encoding='utf-8') as f:
                 strategies_data = json.load(f)
 
+            # 加载品种池配置
+            commodity_pools = strategies_data.get("commodity_pools", {})
+            logger.info(f"加载了 {len(commodity_pools)} 个品种池配置")
+
             for strategy_data in strategies_data.get("strategies", []):
+                # 解析品种池
+                commodity_pool = strategy_data.get("commodity_pool")
+                if commodity_pool:
+                    if commodity_pool == "all":
+                        # 全市场：汇总所有品种池
+                        all_commodities = []
+                        for pool in commodity_pools.values():
+                            all_commodities.extend(pool.get("commodities", []))
+                        strategy_data["commodities"] = list(set(all_commodities))
+                        logger.info(f"策略 {strategy_data['strategy_id']} 使用全市场品种池: {len(strategy_data['commodities'])} 个品种")
+                    elif commodity_pool in commodity_pools:
+                        # 指定品种池
+                        strategy_data["commodities"] = commodity_pools[commodity_pool].get("commodities", [])
+                        logger.info(f"策略 {strategy_data['strategy_id']} 使用品种池 '{commodity_pool}': {commodity_pools[commodity_pool].get('name', '')}")
+                    else:
+                        logger.warning(f"未找到品种池 '{commodity_pool}'，策略 {strategy_data['strategy_id']} 将无可用品种")
+                        strategy_data["commodities"] = []
+
                 await self.add_strategy(StrategyConfig(**strategy_data))
 
             logger.info(f"从配置文件加载了 {len(strategies_data.get('strategies', []))} 个策略")

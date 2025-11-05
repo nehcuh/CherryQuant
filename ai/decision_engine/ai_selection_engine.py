@@ -26,13 +26,32 @@ except ImportError:
     from prompts.ai_selection_prompts import AI_SELECTION_SYSTEM_PROMPT, AI_SELECTION_USER_PROMPT_TEMPLATE
     from data_adapter.multi_symbol_manager import multi_symbol_manager
 
+# 导入合约解析器
+try:
+    from adapters.data_adapter.contract_resolver import get_contract_resolver
+except ImportError:
+    try:
+        import sys
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent.parent
+        sys.path.insert(0, str(project_root))
+        from adapters.data_adapter.contract_resolver import get_contract_resolver
+    except ImportError:
+        logger.warning("无法导入ContractResolver，主力合约解析将受限")
+        get_contract_resolver = None
+
 logger = logging.getLogger(__name__)
 
 class AISelectionEngine:
     """AI品种选择和交易决策引擎"""
 
-    def __init__(self):
-        """初始化AI选择引擎"""
+    def __init__(self, tushare_token: Optional[str] = None, contract_resolver=None):
+        """初始化AI选择引擎
+
+        Args:
+            tushare_token: Tushare Pro API令牌
+            contract_resolver: 合约解析器实例（可选）
+        """
         self.ai_client = AsyncOpenAIClient()
         self.start_time = datetime.now()
         self.market_data_manager = multi_symbol_manager
@@ -43,11 +62,47 @@ class AISelectionEngine:
             "risk_exposure": 0.0
         }
 
+        # 初始化合约解析器
+        if contract_resolver:
+            self.contract_resolver = contract_resolver
+        elif get_contract_resolver:
+            self.contract_resolver = get_contract_resolver(tushare_token)
+            logger.info("✅ 合约解析器初始化完成")
+        else:
+            self.contract_resolver = None
+            logger.warning("⚠️ 合约解析器不可用，将使用固定合约代码")
+
+    async def resolve_commodities_to_contracts(
+        self,
+        commodities: List[str]
+    ) -> Dict[str, str]:
+        """
+        将品种代码列表解析为主力合约
+
+        Args:
+            commodities: 品种代码列表 (如 ["rb", "cu", "IF"])
+
+        Returns:
+            品种到合约的映射字典 (如 {"rb": "rb2501", "cu": "cu2501"})
+        """
+        if not self.contract_resolver:
+            logger.warning("合约解析器不可用，返回空映射")
+            return {}
+
+        try:
+            contracts_map = await self.contract_resolver.batch_resolve_contracts(commodities)
+            logger.info(f"✅ 解析了 {len(contracts_map)} 个品种的主力合约")
+            return contracts_map
+        except Exception as e:
+            logger.error(f"批量解析合约失败: {e}")
+            return {}
+
     async def get_optimal_trade_decision(
         self,
         account_info: Dict[str, Any] = None,
         current_positions: List[Dict[str, Any]] = None,
-        market_scope: Dict[str, Any] = None
+        market_scope: Dict[str, Any] = None,
+        commodities: Optional[List[str]] = None
     ) -> Optional[Dict[str, Any]]:
         """
         获取AI最优交易决策（包含品种选择）
@@ -56,6 +111,7 @@ class AISelectionEngine:
             account_info: 账户信息
             current_positions: 当前持仓
             market_scope: 市场范围配置
+            commodities: 品种代码列表（如 ["rb", "cu"]），优先级高于market_scope
 
         Returns:
             包含品种选择和交易决策的完整JSON
@@ -63,7 +119,21 @@ class AISelectionEngine:
         try:
             logger.info("🔍 开始AI全市场分析...")
 
-            # 1. 获取全市场数据
+            # 1. 如果提供了品种列表，先解析为主力合约
+            if commodities:
+                logger.info(f"📦 品种池模式: 解析 {len(commodities)} 个品种的主力合约")
+                contracts_map = await self.resolve_commodities_to_contracts(commodities)
+
+                # 构造market_scope限制到这些合约
+                resolved_symbols = [contract for contract in contracts_map.values() if contract]
+                if resolved_symbols:
+                    market_scope = market_scope or {}
+                    market_scope["include_symbols"] = resolved_symbols
+                    logger.info(f"✅ 已解析主力合约: {resolved_symbols}")
+                else:
+                    logger.warning("⚠️ 未能解析任何主力合约")
+
+            # 2. 获取全市场数据
             market_data = await self._get_comprehensive_market_data(market_scope)
             if not market_data or "error" in market_data:
                 logger.error("无法获取市场数据")
