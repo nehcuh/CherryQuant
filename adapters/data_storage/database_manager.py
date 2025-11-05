@@ -1,6 +1,6 @@
 """
 CherryQuant 数据库管理器
-整合PostgreSQL、Redis、InfluxDB的多数据库架构
+整合PostgreSQL (TimescaleDB) 和 Redis 的多数据库架构
 使用连接池和事务管理
 """
 

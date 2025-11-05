@@ -17,7 +17,6 @@ dependencies = [
     "aioredis>=2.0.1",
     "redis>=7.0.1",
     "tushare>=1.2.0",
-    "influxdb-client>=1.49.0",
     "pytz>=2025.2",
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",
