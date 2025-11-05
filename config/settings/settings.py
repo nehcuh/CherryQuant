@@ -23,3 +23,10 @@ AI_CONFIG = {
     "model": CONFIG.ai.model,
     "base_url": CONFIG.ai.base_url,
 }
+
+RISK_CONFIG = {
+    "max_drawdown": 0.15,  # 最大回撤15%
+    "max_loss_per_day": 0.05,  # 单日最大损失5%
+    "max_capital_usage": 0.8,  # 最大资金使用率80%
+    "position_size_limit": CONFIG.trading.max_position_size,
+}

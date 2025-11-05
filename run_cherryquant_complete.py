@@ -10,7 +10,7 @@ import signal
 import sys
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # 添加项目路径
@@ -140,10 +140,10 @@ class CherryQuantSystem:
 
             # 4. 初始化风险管理器
             self.risk_manager = PortfolioRiskManager(
-                max_capital_usage=RISK_CONFIG.get('max_drawdown', 0.8),
+                max_capital_usage=RISK_CONFIG.get('max_capital_usage', 0.8),
                 max_daily_loss=RISK_CONFIG.get('max_loss_per_day', 0.05),
                 max_drawdown=RISK_CONFIG.get('max_drawdown', 0.15),
-                max_correlation=TRADING_CONFIG['ai_config'].get('max_correlation_threshold', 0.7),
+                max_correlation=0.7,  # 最大相关性阈值
                 max_sector_concentration=0.4
             )
             await self.risk_manager.start_monitoring()
@@ -162,7 +162,7 @@ class CherryQuantSystem:
             # 6. 初始化代理管理器
             risk_config = PortfolioRiskConfig(
                 max_total_capital_usage=0.8,
-                max_correlation_threshold=TRADING_CONFIG['ai_config'].get('max_correlation_threshold', 0.7),
+                max_correlation_threshold=0.7,  # 最大相关性阈值
                 max_sector_concentration=0.4,
                 portfolio_stop_loss=RISK_CONFIG.get('max_drawdown', 0.15),
                 daily_loss_limit=RISK_CONFIG.get('max_loss_per_day', 0.05),
