@@ -1,15 +1,19 @@
 """
 CherryQuant 基础配置设置
-使用Pydantic进行配置验证
+使用Pydantic进行配置验证和环境变量管理
 """
 
-from pydantic import BaseModel, Field, validator
-from typing import Optional
+from pydantic import BaseModel, Field, validator, root_validator
+from typing import Optional, List
 import os
+import logging
 from dotenv import load_dotenv
 
 # 加载环境变量
-load_dotenv()
+env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+load_dotenv(env_file)
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseConfig(BaseModel):
@@ -30,9 +34,26 @@ class DatabaseConfig(BaseModel):
 
 class AIConfig(BaseModel):
     """AI配置"""
-    model: str = Field(default="gpt-4", env="MODEL_NAME", description="使用的AI模型")
+    model: str = Field(default="gpt-4", env="OPENAI_MODEL", description="使用的AI模型")
     base_url: str = Field(default="https://api.openai.com/v1", env="OPENAI_BASE_URL", description="API基础URL")
     api_key: str = Field(default="", env="OPENAI_API_KEY", description="API密钥")
+    temperature: float = Field(default=0.1, env="AI_TEMPERATURE", description="AI温度参数")
+    max_retries: int = Field(default=3, env="MAX_RETRIES", description="最大重试次数")
+    timeout: int = Field(default=30, env="API_TIMEOUT", description="API超时时间（秒）")
+
+    @validator('api_key')
+    def validate_api_key(cls, v):
+        """验证API密钥"""
+        if not v or v == "your_openai_api_key_here":
+            logger.warning("⚠️ OpenAI API密钥未配置，AI功能将无法使用")
+        return v
+
+    @validator('temperature')
+    def validate_temperature(cls, v):
+        """验证温度参数"""
+        if not 0 <= v <= 2:
+            raise ValueError("AI temperature必须在0-2之间")
+        return v
 
 
 class TradingConfig(BaseModel):
@@ -71,9 +92,49 @@ class DataSourceConfig(BaseModel):
 
     @validator('mode')
     def validate_mode(cls, v):
+        """验证数据模式"""
         if v not in ('live', 'dev'):
             raise ValueError("DATA_MODE must be 'live' or 'dev'")
         return v
+
+    @validator('tushare_token')
+    def validate_tushare_token(cls, v):
+        """验证Tushare令牌"""
+        if not v or v == "your_tushare_pro_token_here":
+            logger.warning("⚠️ Tushare Pro Token未配置，主力合约解析和历史数据功能受限")
+        return v
+
+    @root_validator
+    def validate_live_mode_requirements(cls, values):
+        """验证live模式的必需配置"""
+        mode = values.get('mode')
+        if mode == 'live':
+            ctp_userid = values.get('ctp_userid')
+            ctp_password = values.get('ctp_password')
+
+            # 向后兼容：检查旧的simnow配置
+            simnow_userid = values.get('simnow_userid')
+            simnow_password = values.get('simnow_password')
+
+            if simnow_userid and not ctp_userid:
+                logger.warning("⚠️ SIMNOW_USERID已弃用，请使用CTP_USERID")
+                values['ctp_userid'] = simnow_userid
+
+            if simnow_password and not ctp_password:
+                logger.warning("⚠️ SIMNOW_PASSWORD已弃用，请使用CTP_PASSWORD")
+                values['ctp_password'] = simnow_password
+
+            # 验证CTP配置
+            if not values.get('ctp_userid'):
+                raise ValueError("live模式需要配置CTP_USERID")
+            if not values.get('ctp_password'):
+                raise ValueError("live模式需要配置CTP_PASSWORD")
+
+            logger.info("✅ live模式配置验证通过")
+        else:
+            logger.info(f"ℹ️  使用 {mode} 模式（开发/测试模式）")
+
+        return values
 
 
 class LoggingConfig(BaseModel):
@@ -91,12 +152,81 @@ class CherryQuantConfig(BaseModel):
     trading: TradingConfig = TradingConfig()
     data_source: DataSourceConfig = DataSourceConfig()
     logging: LoggingConfig = LoggingConfig()
-    
+
+    # 环境配置
+    environment: str = Field(default="development", env="ENVIRONMENT", description="运行环境")
+    debug: bool = Field(default=False, env="DEBUG", description="调试模式")
+    timezone: str = Field(default="Asia/Shanghai", env="TIMEZONE", description="时区")
+
     @classmethod
     def from_env(cls) -> 'CherryQuantConfig':
         """从环境变量创建配置"""
-        return cls()
+        try:
+            config = cls()
+            logger.info("✅ 配置加载成功")
+            return config
+        except Exception as e:
+            logger.error(f"❌ 配置加载失败: {e}")
+            raise
+
+    def print_summary(self):
+        """打印配置摘要"""
+        print("\n" + "="*60)
+        print("📋 CherryQuant 配置摘要")
+        print("="*60)
+        print(f"🌍 运行环境: {self.environment}")
+        print(f"🐛 调试模式: {self.debug}")
+        print(f"🕐 时区: {self.timezone}")
+        print(f"\n📊 数据模式: {self.data_source.mode}")
+        print(f"📡 数据源: {self.data_source.source}")
+        print(f"🤖 AI模型: {self.ai.model}")
+        print(f"💾 数据库: {self.database.postgres_host}:{self.database.postgres_port}/{self.database.postgres_db}")
+        print(f"📝 日志级别: {self.logging.level}")
+        print(f"📁 日志目录: {self.logging.log_dir}")
+
+        if self.data_source.mode == 'live':
+            print(f"\n🔴 LIVE 模式配置:")
+            print(f"  - CTP账户: {self.data_source.ctp_userid}")
+            print(f"  - CTP Broker: {self.data_source.ctp_broker_id}")
+            print(f"  - 行情服务器: {self.data_source.ctp_md_address}")
+            print(f"  - 交易服务器: {self.data_source.ctp_td_address}")
+        else:
+            print(f"\n🟢 DEV 模式配置:")
+            print(f"  - 使用准实时数据（AKShare）")
+            print(f"  - 无需CTP账户")
+
+        print("="*60 + "\n")
+
+    def validate_for_production(self):
+        """生产环境配置验证"""
+        issues = []
+
+        if self.environment == "production":
+            # 生产环境必须检查
+            if self.database.postgres_password == "cherryquant123":
+                issues.append("⚠️ 使用默认数据库密码，存在安全风险")
+
+            if not self.ai.api_key or self.ai.api_key == "your_openai_api_key_here":
+                issues.append("⚠️ OpenAI API密钥未配置")
+
+            if self.data_source.mode == "live":
+                if not self.data_source.ctp_userid or not self.data_source.ctp_password:
+                    issues.append("⚠️ CTP账户配置不完整")
+
+        if issues:
+            logger.warning("生产环境配置检查发现问题:")
+            for issue in issues:
+                logger.warning(f"  {issue}")
+            return False
+
+        logger.info("✅ 生产环境配置检查通过")
+        return True
 
 
 # 全局配置实例
 CONFIG = CherryQuantConfig.from_env()
+
+# 打印配置摘要（仅在直接运行时）
+if __name__ == "__main__":
+    CONFIG.print_summary()
+    CONFIG.validate_for_production()
