@@ -119,8 +119,26 @@ class FuturesDecisionEngine:
 
             import pandas as _pd
             if df5 is None or df5.empty:
-                # 生成模拟序列，便于无数据/演示路径
-                base = 3500.0
+                # 尝试从market_data_manager获取实时价格
+                base = 3500.0  # 默认基准价格
+                if self.market_data_manager:
+                    try:
+                        # 提取品种代码（去除数字）用于获取主力合约实时价格
+                        import re
+                        commodity = re.sub(r'\d+', '', symbol).lower()
+
+                        realtime_price = await self.market_data_manager.get_realtime_price(commodity)
+                        if realtime_price is not None and realtime_price > 0:
+                            base = realtime_price
+                            logger.info(f"使用实时价格生成数据序列: {symbol}({commodity}) = {base}")
+                        else:
+                            logger.warning(f"无法获取{symbol}实时价格，使用模拟基准价格: {base}")
+                    except Exception as e:
+                        logger.warning(f"获取实时价格失败: {e}，使用模拟基准价格: {base}")
+                else:
+                    logger.warning(f"market_data_manager未初始化，使用模拟基准价格: {base}")
+
+                # 生成模拟序列，以实时价格为基准
                 ts = _pd.date_range(end=_pd.Timestamp.now(), periods=120, freq='5min')
                 vals = []
                 price = base
