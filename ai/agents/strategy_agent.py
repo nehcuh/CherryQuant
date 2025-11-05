@@ -138,6 +138,12 @@ class StrategyAgent:
             market_data_manager=market_data_manager
         )
 
+        # 合约解析器（用于动态获取主力合约）
+        from adapters.data_adapter.contract_resolver import ContractResolver
+        import os
+        tushare_token = os.getenv("TUSHARE_TOKEN")
+        self.contract_resolver = ContractResolver(tushare_token) if tushare_token else None
+
         logger.info(f"策略代理初始化完成: {config.strategy_name} ({config.strategy_id})")
 
     async def start(self) -> None:
@@ -222,6 +228,24 @@ class StrategyAgent:
 
     async def _process_symbol(self, symbol: str) -> None:
         """处理单个品种"""
+        # 解析主力合约代码
+        contract_code = symbol
+        if self.contract_resolver:
+            try:
+                # 提取品种代码（去除数字）
+                import re
+                commodity = re.sub(r'\d+', '', symbol).lower()
+
+                # 动态获取主力合约
+                dominant_contract = await self.contract_resolver.get_dominant_contract(commodity)
+                if dominant_contract:
+                    contract_code = dominant_contract
+                    logger.debug(f"品种 {symbol} 解析为主力合约: {contract_code}")
+                else:
+                    logger.warning(f"无法解析 {symbol} 的主力合约，使用原始代码")
+            except Exception as e:
+                logger.warning(f"解析主力合约失败 {symbol}: {e}，使用原始代码")
+
         # 获取当前持仓
         current_position = self.positions.get(symbol)
         positions_list = [asdict(pos) for pos in self.positions.values()] if current_position else []
@@ -238,9 +262,9 @@ class StrategyAgent:
             "leverage": self.config.leverage,
         }
 
-        # 获取AI决策
+        # 获取AI决策（使用解析后的主力合约代码）
         decision = await self.decision_engine.get_decision(
-            symbol=symbol,
+            symbol=contract_code,
             account_info=account_info,
             current_positions=positions_list
         )

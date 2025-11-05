@@ -9,7 +9,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 # 添加项目路径到Python路径
 project_root = Path(__file__).parent
@@ -33,6 +33,7 @@ from adapters.data_adapter.market_data_manager import (
     create_tushare_data_manager,
 )
 from adapters.data_adapter.history_data_manager import HistoryDataManager
+from adapters.data_adapter.contract_resolver import ContractResolver
 from adapters.data_storage.database_manager import get_database_manager
 from config.database_config import get_database_config
 
@@ -56,12 +57,36 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 
-def create_strategy_settings():
-    """创建策略设置（带环境变量与默认回退）"""
-    symbol = os.getenv("DEFAULT_SYMBOL", "rb")
+async def create_strategy_settings(contract_resolver: Optional[ContractResolver] = None):
+    """创建策略设置（动态解析主力合约）"""
+    logger = logging.getLogger(__name__)
+
+    # 从环境变量获取品种代码（不含月份）
+    commodity = os.getenv("DEFAULT_SYMBOL", "rb2601")
+    # 如果包含数字，提取品种代码
+    import re
+    commodity_code = re.sub(r'\d+', '', commodity).lower()
+
     exchange = os.getenv("EXCHANGE", "SHFE")
+
+    # 使用 ContractResolver 动态解析主力合约
+    if contract_resolver:
+        try:
+            dominant_contract = await contract_resolver.get_dominant_contract(commodity_code)
+            if dominant_contract:
+                logger.info(f"✅ 动态解析主力合约: {commodity_code} -> {dominant_contract}")
+                vt_symbol = f"{dominant_contract}.{exchange}"
+            else:
+                logger.warning(f"⚠️ 无法解析主力合约，使用默认: {commodity}")
+                vt_symbol = f"{commodity}.{exchange}"
+        except Exception as e:
+            logger.warning(f"⚠️ 主力合约解析失败: {e}，使用默认: {commodity}")
+            vt_symbol = f"{commodity}.{exchange}"
+    else:
+        vt_symbol = f"{commodity}.{exchange}"
+
     return {
-        "vt_symbol": f"{symbol}.{exchange}",
+        "vt_symbol": vt_symbol,
         "decision_interval": TRADING_CONFIG.get("decision_interval", 300),
         "max_position_size": TRADING_CONFIG.get("max_position_size", 10),
         "default_leverage": TRADING_CONFIG.get("default_leverage", 5),
@@ -205,7 +230,7 @@ def run_backtest_mode():
         logger.error(f"回测模式启动失败: {e}")
 
 
-async def run_simulation_mode(market_data_manager, history_manager, db_manager):
+async def run_simulation_mode(market_data_manager, history_manager, db_manager, contract_resolver):
     """运行模拟交易模式"""
     logger = logging.getLogger(__name__)
     logger.info("🚀 启动CherryQuant模拟交易模式")
@@ -220,8 +245,8 @@ async def run_simulation_mode(market_data_manager, history_manager, db_manager):
         else:
             logger.info("未检测到 vn.py，使用无依赖的模拟交易循环")
 
-        # 创建策略设置
-        strategy_settings = create_strategy_settings()
+        # 创建策略设置（动态解析主力合约）
+        strategy_settings = await create_strategy_settings(contract_resolver)
 
         logger.info(f"策略设置: {strategy_settings}")
         logger.info(f"交易合约: {strategy_settings['vt_symbol']}")
@@ -548,6 +573,11 @@ def main():
         # 4. 设置历史数据
         history_manager = setup_history_data()
 
+        # 5. 初始化合约解析器（用于动态获取主力合约）
+        tushare_token = os.getenv("TUSHARE_TOKEN")
+        contract_resolver = ContractResolver(tushare_token)
+        logger.info("✅ 合约解析器初始化完成")
+
         logger.info("✅ 系统检查通过")
 
         # 启动对应模式
@@ -555,13 +585,13 @@ def main():
             run_backtest_mode()
         elif mode == "simulation":
             asyncio.run(
-                run_simulation_mode(market_data_manager, history_manager, db_manager)
+                run_simulation_mode(market_data_manager, history_manager, db_manager, contract_resolver)
             )
         elif mode == "live":
             logger.warning("⚠️  实盘模式尚未完全实现")
             logger.info("请使用模拟模式进行测试")
             asyncio.run(
-                run_simulation_mode(market_data_manager, history_manager, db_manager)
+                run_simulation_mode(market_data_manager, history_manager, db_manager, contract_resolver)
             )
         else:
             logger.error(f"❌ 未知模式: {mode}")
