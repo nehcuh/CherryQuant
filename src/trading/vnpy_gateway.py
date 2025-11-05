@@ -14,10 +14,17 @@ from vnpy.event import Event, EventEngine
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.object import (
     TickData, BarData, OrderData, TradeData, PositionData,
-    AccountData, ContractData, OrderRequest, CancelRequest
+    AccountData, ContractData, OrderRequest, CancelRequest, SubscribeRequest
 )
-from vnpy.trader.constant import Direction, Status, OrderType, Offset
+from vnpy.trader.constant import Direction, Status, OrderType, Offset, Exchange
 from vnpy.trader.gateway import BaseGateway
+
+try:
+    from vnpy_ctp import CtpGateway
+    CTP_AVAILABLE = True
+except ImportError:
+    CtpGateway = None
+    CTP_AVAILABLE = False
 
 from ..cherryquant.cherry_quant_strategy import CherryQuantStrategy
 
@@ -103,13 +110,15 @@ class VNPyGateway:
     def initialize(self) -> bool:
         """初始化网关"""
         try:
-            # 添加CTP网关
+            # 检查 CTP 是否可用
             if self.gateway_name == "CTP":
-                self.main_engine.add_gateway(self.setting.get('gateway_module', 'vnpy.gateway.ctp'))
+                if not CTP_AVAILABLE:
+                    logger.error("vnpy_ctp 未安装或不可用")
+                    return False
 
-            # 添加数据服务（可选）
-            if self.setting.get('enable_rtd', False):
-                self.main_engine.add_rtd_service(self.setting.get('rtd_module', 'vnpy.rtd'))
+                # 添加CTP网关（传入网关类，不是字符串）
+                self.main_engine.add_gateway(CtpGateway)
+                logger.info("CTP网关已添加到主引擎")
 
             # 注册事件处理器
             self._register_event_handlers()
@@ -119,6 +128,8 @@ class VNPyGateway:
 
         except Exception as e:
             logger.error(f"VNPy网关初始化失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
     def connect(self) -> bool:
@@ -134,17 +145,43 @@ class VNPyGateway:
             logger.error(f"连接网关失败: {e}")
             return False
 
+    async def wait_for_connection(self, timeout: int = 30) -> bool:
+        """等待网关连接成功
+
+        Args:
+            timeout: 超时时间（秒）
+
+        Returns:
+            是否连接成功
+        """
+        import time
+        start_time = time.time()
+
+        logger.info("等待CTP连接...")
+        while time.time() - start_time < timeout:
+            if self.connected:
+                logger.info("✅ CTP连接已建立")
+                return True
+            await asyncio.sleep(0.5)
+
+        logger.error(f"❌ CTP连接超时（{timeout}秒）")
+        return False
+
     def disconnect(self) -> None:
         """断开网关连接"""
         try:
             self.main_engine.close()
+            self.connected = False
             logger.info("网关连接已断开")
         except Exception as e:
             logger.error(f"断开网关连接失败: {e}")
 
     def _register_event_handlers(self) -> None:
         """注册事件处理器"""
-        from vnpy.event import EVENT_TICK, EVENT_TRADE, EVENT_ORDER, EVENT_POSITION, EVENT_ACCOUNT, EVENT_CONTRACT
+        from vnpy.event import (
+            EVENT_TICK, EVENT_TRADE, EVENT_ORDER, EVENT_POSITION,
+            EVENT_ACCOUNT, EVENT_CONTRACT, EVENT_LOG
+        )
 
         # 注册事件
         self.event_engine.register(EVENT_TICK, self._on_tick)
@@ -153,6 +190,21 @@ class VNPyGateway:
         self.event_engine.register(EVENT_POSITION, self._on_position)
         self.event_engine.register(EVENT_ACCOUNT, self._on_account)
         self.event_engine.register(EVENT_CONTRACT, self._on_contract)
+        self.event_engine.register(EVENT_LOG, self._on_log)
+
+    def _on_log(self, event: Event) -> None:
+        """日志事件处理"""
+        log_data = event.data
+        msg = log_data.msg
+
+        # 检测连接成功消息
+        if '成功登录' in msg or '登录成功' in msg:
+            self.connected = True
+            logger.info(f"✅ CTP连接成功: {msg}")
+        elif '连接成功' in msg:
+            logger.info(f"CTP网络连接: {msg}")
+        elif '失败' in msg or '错误' in msg:
+            logger.warning(f"CTP消息: {msg}")
 
     def _on_tick(self, event: Event) -> None:
         """Tick事件处理"""
@@ -313,10 +365,35 @@ class VNPyGateway:
     def subscribe_market_data(self, vt_symbols: List[str]) -> None:
         """订阅市场数据"""
         try:
-            self.main_engine.subscribe(vt_symbols, self.gateway_name)
-            logger.info(f"订阅市场数据: {vt_symbols}")
+            for vt_symbol in vt_symbols:
+                # 解析 vt_symbol (格式: rb2501.SHFE)
+                if '.' in vt_symbol:
+                    symbol, exchange_str = vt_symbol.split('.', 1)
+                else:
+                    symbol = vt_symbol
+                    exchange_str = 'SHFE'  # 默认上期所
+
+                # 转换交易所字符串到 Exchange 枚举
+                try:
+                    exchange = Exchange[exchange_str]
+                except KeyError:
+                    logger.warning(f"未知交易所: {exchange_str}，使用默认值 SHFE")
+                    exchange = Exchange.SHFE
+
+                # 创建订阅请求
+                req = SubscribeRequest(
+                    symbol=symbol,
+                    exchange=exchange
+                )
+
+                # 订阅
+                self.main_engine.subscribe(req, self.gateway_name)
+                logger.info(f"订阅行情: {vt_symbol}")
+
         except Exception as e:
             logger.error(f"订阅市场数据失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def unsubscribe_market_data(self, vt_symbols: List[str]) -> None:
         """取消订阅市场数据"""

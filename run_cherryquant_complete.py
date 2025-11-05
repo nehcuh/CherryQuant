@@ -98,12 +98,33 @@ class CherryQuantSystem:
                             '授权编码': '0000000000000000',
                         }
 
+                        # 创建VNPy网关
                         self.vnpy_gateway = VNPyGateway(gateway_name="CTP", setting=ctp_setting)
-                        self.realtime_recorder = RealtimeRecorder(self.vnpy_gateway)
-                        await self.realtime_recorder.initialize()
-                        logger.info("✅ Live模式：CTP实时记录器初始化完成")
+
+                        # 初始化网关（添加到主引擎）
+                        if not self.vnpy_gateway.initialize():
+                            logger.error("❌ VNPy网关初始化失败")
+                            self.vnpy_gateway = None
+                        else:
+                            # 连接CTP
+                            if not self.vnpy_gateway.connect():
+                                logger.error("❌ CTP连接失败")
+                                self.vnpy_gateway = None
+                            else:
+                                # 等待连接成功（最多30秒）
+                                connected = await self.vnpy_gateway.wait_for_connection(timeout=30)
+                                if not connected:
+                                    logger.error("❌ CTP连接超时")
+                                    self.vnpy_gateway.disconnect()
+                                    self.vnpy_gateway = None
+                                else:
+                                    # 连接成功，创建RealtimeRecorder
+                                    self.realtime_recorder = RealtimeRecorder(self.vnpy_gateway)
+                                    await self.realtime_recorder.initialize()
+                                    logger.info("✅ Live模式：CTP实时记录器初始化完成")
                     else:
-                        logger.warning("⚠️ Live模式缺少CTP配置，实时数据录制功能不可用")
+                        logger.warning("⚠️ Live模式缺少CTP配置（CTP_USERID或CTP_PASSWORD未设置）")
+                        logger.warning("⚠️ 实时数据录制功能不可用，将使用备用数据源")
                 except Exception as e:
                     logger.warning(f"⚠️ RealtimeRecorder 初始化失败（可能是macOS不支持CTP）: {e}")
                     logger.warning("⚠️ 将使用备用数据源")
@@ -368,6 +389,14 @@ class CherryQuantSystem:
 
         try:
             await self.stop()
+
+            # 断开VNPy网关连接
+            if self.vnpy_gateway:
+                try:
+                    self.vnpy_gateway.disconnect()
+                    logger.info("✅ VNPy网关已断开")
+                except Exception as e:
+                    logger.error(f"断开VNPy网关失败: {e}")
 
             if self.market_data_manager:
                 # 关闭市场数据管理器
