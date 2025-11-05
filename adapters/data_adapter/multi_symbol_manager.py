@@ -179,16 +179,16 @@ class MultiSymbolDataManager:
             if not points:
                 return None
 
-            # 转 DataFrame
+            # 转 DataFrame，确保所有数值字段都是float类型
             data = [
                 {
                     'datetime': p.timestamp,
-                    'open': p.open,
-                    'high': p.high,
-                    'low': p.low,
-                    'close': p.close,
-                    'volume': p.volume,
-                    'open_interest': getattr(p, 'open_interest', 0),
+                    'open': float(p.open),
+                    'high': float(p.high),
+                    'low': float(p.low),
+                    'close': float(p.close),
+                    'volume': float(p.volume),
+                    'open_interest': float(getattr(p, 'open_interest', 0)),
                 }
                 for p in points
             ]

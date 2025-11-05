@@ -3,7 +3,7 @@ CherryQuant 基础配置设置
 使用Pydantic进行配置验证和环境变量管理
 """
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, validator, field_validator, model_validator
 from typing import Optional, List
 import os
 import logging
@@ -104,37 +104,31 @@ class DataSourceConfig(BaseModel):
             logger.warning("⚠️ Tushare Pro Token未配置，主力合约解析和历史数据功能受限")
         return v
 
-    @root_validator
-    def validate_live_mode_requirements(cls, values):
+    @model_validator(mode='after')
+    def validate_live_mode_requirements(self):
         """验证live模式的必需配置"""
-        mode = values.get('mode')
+        mode = self.mode
         if mode == 'live':
-            ctp_userid = values.get('ctp_userid')
-            ctp_password = values.get('ctp_password')
-
             # 向后兼容：检查旧的simnow配置
-            simnow_userid = values.get('simnow_userid')
-            simnow_password = values.get('simnow_password')
-
-            if simnow_userid and not ctp_userid:
+            if self.simnow_userid and not self.ctp_userid:
                 logger.warning("⚠️ SIMNOW_USERID已弃用，请使用CTP_USERID")
-                values['ctp_userid'] = simnow_userid
+                self.ctp_userid = self.simnow_userid
 
-            if simnow_password and not ctp_password:
+            if self.simnow_password and not self.ctp_password:
                 logger.warning("⚠️ SIMNOW_PASSWORD已弃用，请使用CTP_PASSWORD")
-                values['ctp_password'] = simnow_password
+                self.ctp_password = self.simnow_password
 
             # 验证CTP配置
-            if not values.get('ctp_userid'):
+            if not self.ctp_userid:
                 raise ValueError("live模式需要配置CTP_USERID")
-            if not values.get('ctp_password'):
+            if not self.ctp_password:
                 raise ValueError("live模式需要配置CTP_PASSWORD")
 
             logger.info("✅ live模式配置验证通过")
         else:
             logger.info(f"ℹ️  使用 {mode} 模式（开发/测试模式）")
 
-        return values
+        return self
 
 
 class LoggingConfig(BaseModel):
