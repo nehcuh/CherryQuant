@@ -215,8 +215,7 @@ async def run_simulation_mode(market_data_manager, history_manager, db_manager):
         if EventEngine and MainEngine and CtaStrategyApp:
             event_engine = EventEngine()
             main_engine = MainEngine(event_engine)
-            cta_app = CtaStrategyApp()
-            main_engine.add_app(cta_app)
+            cta_engine = main_engine.add_app(CtaStrategyApp)
             logger.info("vn.py 引擎已就绪（模拟模式不使用真实网关）")
         else:
             logger.info("未检测到 vn.py，使用无依赖的模拟交易循环")
