@@ -59,6 +59,89 @@ class CherryQuantSystem:
         self.is_running = False
         self.startup_tasks = []
         self.data_mode = os.getenv('DATA_MODE', 'dev').lower()
+        self.skip_data_check = False  # 是否跳过数据检查
+        self.tushare_token = os.getenv('TUSHARE_TOKEN')
+
+    async def _check_and_init_historical_data(self) -> None:
+        """检查数据库并询问是否初始化历史数据"""
+        if self.skip_data_check:
+            return
+
+        try:
+            # 检查数据库中的数据量
+            async with self.db_manager.postgres_pool.acquire() as conn:
+                count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM market_data"
+                )
+
+                if count == 0:
+                    logger.warning("⚠️  数据库中没有历史数据")
+                    print("\n" + "="*70)
+                    print("⚠️  检测到数据库为空")
+                    print("="*70)
+                    print("\n建议下载历史数据以获得更好的AI决策效果")
+                    print("\n可选方案:")
+                    print("  1. 现在下载 (推荐，需要5-10分钟)")
+                    print("  2. 稍后手动下载")
+                    print("  3. 跳过 (系统将使用实时数据)")
+                    print("\n" + "="*70)
+
+                    # 询问用户
+                    try:
+                        choice = input("\n请选择 (1/2/3, 默认3): ").strip() or "3"
+
+                        if choice == "1":
+                            # 执行数据初始化
+                            logger.info("开始下载历史数据...")
+                            await self._run_data_initialization()
+                        elif choice == "2":
+                            print("\n📝 稍后可运行以下命令初始化数据:")
+                            print("   uv run python scripts/init_historical_data.py")
+                            print("")
+                        else:
+                            logger.info("跳过历史数据下载，将使用实时数据")
+
+                    except (EOFError, KeyboardInterrupt):
+                        logger.info("\n跳过历史数据下载")
+
+                elif count < 1000:
+                    logger.info(f"ℹ️  数据库中有 {count} 条历史数据（数据较少）")
+                else:
+                    logger.info(f"✅ 数据库中有 {count:,} 条历史数据")
+
+        except Exception as e:
+            logger.warning(f"检查历史数据失败: {e}")
+
+    async def _run_data_initialization(self) -> None:
+        """运行数据初始化（快速模式）"""
+        try:
+            # 导入初始化器
+            sys.path.insert(0, str(Path(__file__).parent / "scripts"))
+            from init_historical_data import HistoricalDataInitializer
+
+            initializer = HistoricalDataInitializer(self.tushare_token)
+
+            # 快速初始化：主流品种 + 日线/小时线
+            symbols = {
+                "SHFE": ["rb", "hc", "cu", "al"],
+                "DCE": ["i", "j", "jm", "m"],
+                "CZCE": ["SR", "CF"],
+                "CFFEX": ["IF", "IC"]
+            }
+            timeframes = ["1d", "1h"]
+
+            print("\n⏬ 正在下载历史数据（主流品种，日线+小时线）...")
+            print("   这可能需要几分钟，请稍候...\n")
+
+            results = await initializer.initialize_data(symbols, timeframes)
+
+            logger.info("✅ 历史数据初始化完成")
+
+        except Exception as e:
+            logger.error(f"数据初始化失败: {e}")
+            print("\n❌ 自动初始化失败，请稍后手动运行:")
+            print("   uv run python scripts/init_historical_data.py")
+            print("")
 
     async def initialize(self) -> bool:
         """初始化所有系统组件"""
@@ -69,6 +152,9 @@ class CherryQuantSystem:
             db_config = get_database_config()
             self.db_manager = await get_database_manager(db_config)
             logger.info("✅ 数据库管理器初始化完成")
+
+            # 1.1 检查数据库是否有历史数据
+            await self._check_and_init_historical_data()
 
             # 2. 初始化市场数据管理器
             from adapters.data_adapter.market_data_manager import create_default_data_manager
