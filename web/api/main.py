@@ -10,9 +10,11 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
+from pathlib import Path
 
 # 项目导入
 from ai.agents.agent_manager import AgentManager
@@ -27,6 +29,11 @@ app = FastAPI(
     description="多代理AI交易系统监控和管理API",
     version="1.0.0"
 )
+
+# 挂载静态文件
+static_dir = Path(__file__).parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # CORS设置
 app.add_middleware(
@@ -91,9 +98,33 @@ def initialize_services(
 
 # ==================== 根路径 ====================
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """API根路径 - 欢迎页面"""
+    """主页 - Web监控界面"""
+    index_file = Path(__file__).parent.parent / "static" / "index.html"
+    if index_file.exists():
+        with open(index_file, 'r', encoding='utf-8') as f:
+            return f.read()
+    else:
+        # 如果HTML文件不存在，返回API信息
+        return """
+        <html>
+            <head><title>CherryQuant API</title></head>
+            <body>
+                <h1>🍒 CherryQuant API</h1>
+                <p>多代理AI交易系统监控和管理API</p>
+                <ul>
+                    <li><a href="/docs">API文档</a></li>
+                    <li><a href="/api/v1/status">系统状态</a></li>
+                    <li><a href="/api/v1/health">健康检查</a></li>
+                </ul>
+            </body>
+        </html>
+        """
+
+@app.get("/api", response_class=HTMLResponse)
+async def api_info():
+    """API信息页面"""
     return {
         "name": "CherryQuant API",
         "version": "1.0.0",
