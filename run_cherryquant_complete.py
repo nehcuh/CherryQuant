@@ -50,6 +50,7 @@ class CherryQuantSystem:
         self.agent_manager: Optional = None
         self.risk_manager: Optional = None
         self.alert_manager: Optional = None
+        self.running_tasks: List[asyncio.Task] = []  # 跟踪运行中的任务
         self.ai_logger: Optional = None
         self.web_app: Optional = None
         self.vnpy_gateway: Optional = None
@@ -234,24 +235,25 @@ class CherryQuantSystem:
 
             # 启动交易系统
             trading_task = asyncio.create_task(self.agent_manager.start_all())
+            self.running_tasks.append(trading_task)
 
             # 启动Web服务（如果启用）
             web_task = None
             if include_web:
                 web_task = asyncio.create_task(self._start_web_server())
+                self.running_tasks.append(web_task)
 
             # 启动监控任务
             monitor_task = asyncio.create_task(self._monitoring_loop())
+            self.running_tasks.append(monitor_task)
 
             # 等待任务完成
-            tasks = [trading_task, monitor_task]
-            if web_task:
-                tasks.append(web_task)
-
-            await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.gather(*self.running_tasks, return_exceptions=True)
 
         except KeyboardInterrupt:
             logger.info("🛑 收到停止信号，正在关闭系统...")
+        except asyncio.CancelledError:
+            logger.info("🛑 任务被取消，正在关闭系统...")
         except Exception as e:
             logger.error(f"❌ 系统运行出错: {e}")
         finally:
@@ -414,6 +416,18 @@ class CherryQuantSystem:
         logger.info("🛑 停止交易系统...")
         self.is_running = False
 
+        # 取消所有运行中的任务
+        logger.info(f"正在取消 {len(self.running_tasks)} 个运行中的任务...")
+        for task in self.running_tasks:
+            if not task.done():
+                task.cancel()
+
+        # 等待任务完成取消
+        if self.running_tasks:
+            await asyncio.gather(*self.running_tasks, return_exceptions=True)
+            self.running_tasks.clear()
+            logger.info("✅ 所有任务已取消")
+
         if self.realtime_recorder:
             try:
                 await self.realtime_recorder.stop()
@@ -512,31 +526,56 @@ class CherryQuantSystem:
 async def main():
     """主函数"""
     trading_system = CherryQuantSystem()
+    shutdown_event = asyncio.Event()
 
     # 设置信号处理
     def signal_handler(signum, frame):
         logger.info(f"收到信号 {signum}，正在停止系统...")
-        asyncio.create_task(trading_system.stop())
+        shutdown_event.set()  # 设置停止事件
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # 检查命令行参数
-    if len(sys.argv) > 1:
-        if sys.argv[1] == '--trading-only':
-            # 只启动交易系统
-            await trading_system.start_trading_only()
-        elif sys.argv[1] == '--help':
-            print("用法: python run_cherryquant_complete.py [选项]")
-            print("选项:")
-            print("  --trading-only  只启动交易系统，不启动Web服务")
-            print("  --help          显示帮助信息")
+    try:
+        # 检查命令行参数
+        if len(sys.argv) > 1:
+            if sys.argv[1] == '--trading-only':
+                # 只启动交易系统
+                await trading_system.start_trading_only()
+            elif sys.argv[1] == '--help':
+                print("用法: python run_cherryquant_complete.py [选项]")
+                print("选项:")
+                print("  --trading-only  只启动交易系统，不启动Web服务")
+                print("  --help          显示帮助信息")
+                return
+            else:
+                print(f"未知参数: {sys.argv[1]}")
+                print("使用 --help 查看帮助信息")
+                return
         else:
-            print(f"未知参数: {sys.argv[1]}")
-            print("使用 --help 查看帮助信息")
-    else:
-        # 启动完整系统
-        await trading_system.start()
+            # 启动完整系统
+            start_task = asyncio.create_task(trading_system.start())
+
+            # 等待启动完成或停止信号
+            done, pending = await asyncio.wait(
+                [start_task, asyncio.create_task(shutdown_event.wait())],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # 如果收到停止信号，取消启动任务
+            if shutdown_event.is_set():
+                logger.info("收到停止信号，取消所有任务...")
+                for task in pending:
+                    task.cancel()
+                for task in done:
+                    if not task.cancelled():
+                        try:
+                            await task
+                        except Exception as e:
+                            logger.error(f"任务异常: {e}")
+    finally:
+        # 确保清理
+        await trading_system.shutdown()
 
 if __name__ == "__main__":
     try:
