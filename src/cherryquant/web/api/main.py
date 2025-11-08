@@ -54,7 +54,11 @@ websocket_connections: List[WebSocket] = []
 class StrategyConfig(BaseModel):
     strategy_id: str
     strategy_name: str
-    symbols: List[str]
+    symbols: Optional[List[str]] = None
+    commodity_pool: Optional[str] = None
+    commodities: Optional[List[str]] = None
+    max_symbols: int = 3
+    selection_mode: str = "ai_driven"
     initial_capital: float
     max_position_size: int
     max_positions: int
@@ -261,7 +265,28 @@ async def create_strategy(config: StrategyConfig):
 
         from cherryquant.ai.agents.strategy_agent import StrategyConfig as AgentStrategyConfig
 
-        strategy_config = AgentStrategyConfig(**config.dict())
+        payload = config.dict()
+        strategy_config = AgentStrategyConfig(
+            strategy_id=payload["strategy_id"],
+            strategy_name=payload["strategy_name"],
+            initial_capital=payload["initial_capital"],
+            max_position_size=payload["max_position_size"],
+            max_positions=payload["max_positions"],
+            leverage=payload["leverage"],
+            risk_per_trade=payload["risk_per_trade"],
+            decision_interval=payload["decision_interval"],
+            confidence_threshold=payload["confidence_threshold"],
+            ai_model=payload.get("ai_model", "gpt-4"),
+            ai_temperature=payload.get("ai_temperature", 0.1),
+            is_active=payload.get("is_active", True),
+            manual_override=payload.get("manual_override", False),
+            # pool-related fields
+            commodity_pool=payload.get("commodity_pool"),
+            commodities=payload.get("commodities"),
+            symbols=payload.get("symbols"),
+            max_symbols=payload.get("max_symbols", 3),
+            selection_mode=payload.get("selection_mode", "ai_driven"),
+        )
         success = await agent_manager.add_strategy(strategy_config)
 
         if success:
