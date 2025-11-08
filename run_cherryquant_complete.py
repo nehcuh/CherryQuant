@@ -114,8 +114,7 @@ class CherryQuantSystem:
         """运行数据初始化（快速模式）"""
         try:
             # 导入初始化器
-            sys.path.insert(0, str(Path(__file__).parent / "scripts"))
-            from init_historical_data import HistoricalDataInitializer
+            from scripts.init_historical_data import HistoricalDataInitializer
 
             initializer = HistoricalDataInitializer(self.tushare_token)
 
