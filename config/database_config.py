@@ -5,22 +5,23 @@ CherryQuant 数据库配置
 import os
 from typing import Dict, Any
 from cherryquant.adapters.data_storage.database_manager import DatabaseConfig
+from config.settings.base import CONFIG
 
 def get_database_config() -> DatabaseConfig:
-    """获取数据库配置"""
+    """获取数据库配置（使用全局 CONFIG 作为单一来源）"""
     return DatabaseConfig(
-        postgres_host=os.getenv("POSTGRES_HOST", "localhost"),
-        postgres_port=int(os.getenv("POSTGRES_PORT", "5432")),
-        postgres_db=os.getenv("POSTGRES_DB", "cherryquant"),
-        postgres_user=os.getenv("POSTGRES_USER", "cherryquant"),
-        postgres_password=os.getenv("POSTGRES_PASSWORD", "cherryquant123"),
-        redis_host=os.getenv("REDIS_HOST", "localhost"),
-        redis_port=int(os.getenv("REDIS_PORT", "6379")),
-        redis_db=int(os.getenv("REDIS_DB", "0")),
-        cache_ttl=int(os.getenv("CACHE_TTL", "300")),  # 5分钟缓存
+        postgres_host=CONFIG.database.postgres_host,
+        postgres_port=CONFIG.database.postgres_port,
+        postgres_db=CONFIG.database.postgres_db,
+        postgres_user=CONFIG.database.postgres_user,
+        postgres_password=CONFIG.database.postgres_password,
+        redis_host=CONFIG.database.redis_host,
+        redis_port=CONFIG.database.redis_port,
+        redis_db=CONFIG.database.redis_db,
+        cache_ttl=CONFIG.database.cache_ttl,
     )
 
-# 数据库连接配置（向后兼容）
+# 数据库连接配置（向后兼容，基于 CONFIG 构建）
 DATABASE_CONFIG = get_database_config()
 
 # 数据保留策略
