@@ -17,7 +17,7 @@ What you’ll use most
   - Live mode (not fully implemented): uv run python run_cherryquant.py live
   - Realtime recorder (vn.py CTP ticks→bars): see docs/VN_RECORDER.md
   - AI market selection demo: uv run python run_cherryquant_ai_selection.py
-  - Database integration demo: uv run python demo_database_integration.py
+
 
 - Tests
   - All tests: uv run pytest tests -v
@@ -58,8 +58,7 @@ High-level architecture and flow
     - Sets up logging, data sources (Tushare by default; realtime via vn.py recorder), history caching, and an async simulation loop that pulls LLM decisions and simulates trades
   - run_cherryquant_ai_selection.py
     - Full-market scan and instrument selection demo using the AISelectionEngine
-  - demo_database_integration.py
-    - End-to-end database integration demo: generate multi-timeframe data, compute indicators, store/fetch via Postgres/Redis
+
 
 - AI decisioning
   - src/cherryquant/ai/decision_engine/futures_engine.py
@@ -97,6 +96,6 @@ High-level architecture and flow
 Practical tips for this repo
 
 - Use simulation mode first; it verifies OpenAI connectivity and runs an async loop without broker connectivity
-- For database demos, ensure docker services are up before running demo_database_integration.py
+
 - Tests are light and network-sensitive; install dev deps with uv sync --group dev
 - Logging goes to logs/ and stdout; increase detail by tweaking LOGGING_CONFIG in config/settings/settings.py
