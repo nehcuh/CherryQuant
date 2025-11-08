@@ -392,32 +392,10 @@ class MarketDataManager:
             self.fallback_sources.append(source)
 
     async def initialize(self):
-        """初始化数据管理器（Tushare 优先，不回退 AKShare）"""
-        try:
-            import os
-            from dotenv import load_dotenv
-            load_dotenv()
-
-            # 根据环境变量配置数据源
-            data_source = os.getenv('DATA_SOURCE', 'tushare').lower()
-
-            if data_source == 'tushare':
-                tushare_token = os.getenv('TUSHARE_TOKEN')
-                ts_source = TushareDataSource(token=tushare_token)
-                if ts_source.is_available():
-                    self.add_data_source(ts_source, is_primary=True)
-                    logger.info("✅ 使用Tushare数据源初始化完成")
-                else:
-                    logger.warning("⚠️ Tushare Token 未配置或不可用，历史数据功能将受限")
-                return True
-
-            # 其他数据源（如 simnow）在专用工厂方法中处理
-            logger.info("📊 未指定可用数据源，数据管理器以受限模式启动")
-            return True
-
-        except Exception as e:
-            logger.error(f"❌ 数据管理器初始化失败: {e}")
-            return False
+        """已弃用：请使用工厂方法（create_default_data_manager/create_tushare_data_manager/create_simnow_data_manager）"""
+        logger.warning("MarketDataManager.initialize() 已弃用，请使用工厂方法创建并配置数据源")
+        # 为保持向后兼容，这里不做任何数据源变更，仅返回 True
+        return True
 
     async def _get_price_from_db(self, symbol: str) -> Optional[float]:
         """从数据库获取最新价格（live模式）"""

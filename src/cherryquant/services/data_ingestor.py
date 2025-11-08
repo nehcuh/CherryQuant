@@ -8,12 +8,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Dict, List
-from pathlib import Path
-import sys
 
-# Add project root to sys.path for absolute imports when run as a script
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
 
 import akshare as ak
 

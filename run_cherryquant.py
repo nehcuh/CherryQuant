@@ -11,10 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-# 添加项目路径到Python路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
+# 使用包导入，无需修改 sys.path
 
 # Optional vn.py imports (not required for headless simulation)
 try:

@@ -9,8 +9,7 @@ from datetime import datetime
 from pathlib import Path
 import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+# Using package imports; no sys.path modification needed
 
 import akshare as ak
 from cherryquant.adapters.data_storage.database_manager import get_database_manager

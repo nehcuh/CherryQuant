@@ -13,9 +13,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-# 添加项目路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+
 
 from cherryquant.ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
 from cherryquant.adapters.data_storage.database_manager import get_database_manager

@@ -13,9 +13,7 @@ from typing import List, Dict, Optional
 import logging
 import pandas as pd
 
-# 添加项目路径
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+
 
 from cherryquant.adapters.data_storage.database_manager import get_database_manager
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint

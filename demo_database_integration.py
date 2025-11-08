@@ -6,14 +6,7 @@ CherryQuant 数据库集成演示
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
-import sys
 
-# 添加项目路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "adapters"))
-sys.path.insert(0, str(project_root / "ai"))
 
 from cherryquant.adapters.data_storage.database_manager import get_database_manager
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, TimeFrameDataManager, MarketDataPoint, TechnicalIndicators
