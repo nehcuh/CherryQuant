@@ -44,6 +44,12 @@ class AsyncOpenAIClient:
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.model = os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "gpt-4"
+        # 可配置的超时、重试与限速
+        self.timeout = int(os.getenv("OPENAI_TIMEOUT", os.getenv("API_TIMEOUT", "30")))
+        self.max_retries = int(os.getenv("OPENAI_MAX_RETRIES", os.getenv("MAX_RETRIES", "3")))
+        self.requests_per_minute = int(os.getenv("OPENAI_REQUESTS_PER_MINUTE", "30"))
+        self._min_interval = 60.0 / self.requests_per_minute if self.requests_per_minute > 0 else 0.0
+        self._last_request_time = 0.0
 
         # 允许无密钥初始化（演示/测试降级），在调用时再做可用性判断
         if not self.api_key:
@@ -80,18 +86,35 @@ class AsyncOpenAIClient:
                 logger.info("OpenAI 客户端未初始化，跳过真实调用")
                 return None
 
-            # 调用OpenAI API
-            # 如果没有指定模型，使用配置的默认模型
+            # 调用OpenAI API（超时、重试、限速）
             model_to_use = model or self.model
-            response = await self.client.chat.completions.create(
-                model=model_to_use,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            last_exc = None
+            for attempt in range(1, self.max_retries + 1):
+                await self._wait_for_rate_limit()
+                try:
+                    coro = self.client.chat.completions.create(
+                        model=model_to_use,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    response = await asyncio.wait_for(coro, timeout=self.timeout)
+                    self._last_request_time = asyncio.get_event_loop().time()
+                    break
+                except asyncio.TimeoutError as e:
+                    last_exc = e
+                    logger.warning(f"OpenAI 请求超时（{self.timeout}s），重试 {attempt}/{self.max_retries}")
+                except Exception as e:
+                    last_exc = e
+                    logger.warning(f"OpenAI 请求失败（第 {attempt} 次）: {e}")
+                # 指数退避
+                await asyncio.sleep(min(2 ** (attempt - 1), 10))
+            else:
+                logger.error(f"OpenAI 多次重试后仍失败: {last_exc}")
+                return None
 
             # 获取回复内容
             content = response.choices[0].message.content
@@ -176,6 +199,15 @@ class AsyncOpenAIClient:
                 text = text[brace_start:brace_end+1]
         return json.loads(text)
 
+    async def _wait_for_rate_limit(self) -> None:
+        """简单的每分钟速率限制"""
+        if self._min_interval <= 0:
+            return
+        now = asyncio.get_event_loop().time()
+        elapsed = now - self._last_request_time
+        if elapsed < self._min_interval:
+            await asyncio.sleep(self._min_interval - elapsed)
+
     async def test_connection(self) -> bool:
         """
         测试API连接
@@ -187,13 +219,20 @@ class AsyncOpenAIClient:
             if not self.client:
                 logger.info("OpenAI 客户端未初始化（无 API Key），连接测试返回 False")
                 return False
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": "Hello"}],
-                max_tokens=10,
-            )
-            logger.info(f"API连接测试成功，使用模型: {self.model}")
-            return True
+            await self._wait_for_rate_limit()
+            try:
+                coro = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": "Hello"}],
+                    max_tokens=10,
+                )
+                _ = await asyncio.wait_for(coro, timeout=self.timeout)
+                self._last_request_time = asyncio.get_event_loop().time()
+                logger.info(f"API连接测试成功，使用模型: {self.model}")
+                return True
+            except asyncio.TimeoutError:
+                logger.error(f"API连接测试超时（{self.timeout}s）")
+                return False
         except Exception as e:
             logger.error(f"API连接测试失败: {e}")
             return False

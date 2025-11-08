@@ -123,6 +123,8 @@ class StrategyAgent:
         self.cash_available = config.initial_capital
         self.positions: Dict[str, Position] = {}
         self.trades: List[Trade] = []
+        # Structured logger (AITradingLogger), initialized on start()
+        self.ai_logger = None
 
         # 性能指标
         self.total_trades = 0
@@ -154,6 +156,16 @@ class StrategyAgent:
 
         logger.info(f"启动策略代理: {self.config.strategy_name}")
         self.status = AgentStatus.IDLE
+
+        # Initialize structured AI logger if available
+        if self.ai_logger is None:
+            try:
+                from cherryquant.utils.ai_logger import get_ai_logger  # lazy import
+                self.ai_logger = await get_ai_logger(self.db_manager)
+                if hasattr(self.ai_logger, "start"):
+                    await self.ai_logger.start()
+            except Exception as e:
+                logger.debug(f"AI logger init skipped: {e}")
 
         # 主循环
         try:
@@ -310,6 +322,18 @@ class StrategyAgent:
                 logger.info(f"策略 {self.config.strategy_id} 处于手动覆盖模式，跳过AI决策")
                 return
 
+            # Structured AI decision logging
+            if self.ai_logger:
+                try:
+                    await self.ai_logger.log_ai_decision({
+                        "strategy_id": self.config.strategy_id,
+                        "symbol": symbol,
+                        "decision": decision,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                except Exception as e:
+                    logger.debug(f"AI decision log failed: {e}")
+
             self.status = AgentStatus.PLACING_ORDER
 
             current_position = self.positions.get(symbol)
@@ -387,6 +411,28 @@ class StrategyAgent:
         # 记录交易
         self.trades.append(trade)
         self.total_trades += 1
+        # Structured trade and position logs (buy)
+        if self.ai_logger:
+            try:
+                await self.ai_logger.log_trade_execution({
+                    "strategy_id": self.config.strategy_id,
+                    "symbol": symbol,
+                    "direction": "buy",
+                    "order_type": "limit" if price > 0 else "market",
+                    "quantity": quantity,
+                    "price": price,
+                    "timestamp": trade.timestamp.isoformat(),
+                    "commission": trade.commission
+                })
+                await self.ai_logger.log_position_change({
+                    "strategy_id": self.config.strategy_id,
+                    "symbol": symbol,
+                    "quantity": self.positions[symbol].quantity if symbol in self.positions else quantity,
+                    "entry_price": self.positions[symbol].entry_price if symbol in self.positions else price,
+                    "timestamp": datetime.now().isoformat()
+                })
+            except Exception as e:
+                logger.debug(f"Structured trade log failed (buy): {e}")
 
         # 记录到数据库
         await self._record_trade(trade)
@@ -446,6 +492,29 @@ class StrategyAgent:
         # 记录交易
         self.trades.append(trade)
         await self._record_trade(trade)
+        # Structured trade and position logs (sell)
+        if self.ai_logger:
+            try:
+                await self.ai_logger.log_trade_execution({
+                    "strategy_id": self.config.strategy_id,
+                    "symbol": symbol,
+                    "direction": "sell",
+                    "order_type": "limit" if price > 0 else "market",
+                    "quantity": quantity,
+                    "price": price,
+                    "timestamp": trade.timestamp.isoformat(),
+                    "commission": trade.commission,
+                    "pnl": trade.pnl
+                })
+                await self.ai_logger.log_position_change({
+                    "strategy_id": self.config.strategy_id,
+                    "symbol": symbol,
+                    "quantity": self.positions[symbol].quantity if symbol in self.positions else 0,
+                    "entry_price": self.positions[symbol].entry_price if symbol in self.positions else 0.0,
+                    "timestamp": datetime.now().isoformat()
+                })
+            except Exception as e:
+                logger.debug(f"Structured trade log failed (sell): {e}")
 
         logger.info(f"执行卖出: {symbol} {quantity}手 @ {price:.2f}, 实现盈亏: {pnl:.2f}")
 
