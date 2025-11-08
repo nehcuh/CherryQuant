@@ -34,3 +34,52 @@ TUSHARE_TOKEN=你的tushare_pro_token
 ## 回退方案
 - 若缺少 Tushare Token：AI 引擎将使用模拟序列/已有 DB 数据；功能受限
 - 若 CTP 暂不可用：可仍以历史数据配合模拟逻辑运行，实时性受限
+
+---
+
+## 附录：导入路径迁移（包结构升级）
+
+为了统一导入路径与便于部署，项目已将原先根目录下的 ai/、adapters/、services/、web/ 迁移至包内路径 `src/cherryquant/`。请将旧导入替换为新的包导入。
+
+### 变更总览
+- 旧路径 → 新路径（示例）
+  - `from ai.decision_engine.futures_engine import FuturesDecisionEngine`
+    → `from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine`
+  - `from adapters.data_adapter.market_data_manager import create_default_data_manager`
+    → `from cherryquant.adapters.data_adapter.market_data_manager import create_default_data_manager`
+  - `from services.data_ingestor import run_loop`
+    → `from cherryquant.services.data_ingestor import run_loop`
+  - `from web.api.main import create_app`
+    → `from cherryquant.web.api.main import create_app`
+
+### 常见替换规则
+- `from ai.` → `from cherryquant.ai.`
+- `from adapters.` → `from cherryquant.adapters.`
+- `from services.` → `from cherryquant.services.`
+- `from web.` → `from cherryquant.web.`
+
+### 手动替换示例
+```python
+# 之前
+from ai.llm_client.openai_client import AsyncOpenAIClient
+from adapters.data_storage.database_manager import get_database_manager
+
+# 之后
+from cherryquant.ai.llm_client.openai_client import AsyncOpenAIClient
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
+```
+
+### 快速迁移建议
+- 在本仓库提供的脚本（scripts/refactor_imports.py）中，支持将外部工程的旧导入批量替换为新路径（默认 dry-run，添加 --apply 才会写回）。
+- 推荐在单独分支上执行，配合 `git diff` 审核。
+
+### 安装与运行建议
+- 使用 uv 管理依赖：
+  ```bash
+  uv sync --group dev
+  uv run pip install -e .
+  ```
+- 安装为可编辑模式后，即可在你的项目中直接 `import cherryquant...`，无需再修改 `sys.path`。
+- CI 建议执行步骤（示例）：
+  - uv sync → uv run pip install -e . → uv run ruff/mypy/pytest
+
