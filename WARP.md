@@ -13,8 +13,8 @@ What you’ll use most
 
 - Run the apps
   - Simulation mode (recommended): uv run python run_cherryquant.py simulation
-  - Backtest mode (placeholder): uv run python run_cherryquant.py backtest
-  - Live mode (not fully implemented): uv run python run_cherryquant.py live
+  - Backtest mode（规划中，当前暂不推荐）: uv run python run_cherryquant.py backtest
+  - Live mode（规划中，使用前请阅读 README 的 live 说明）: uv run python run_cherryquant.py live
   - Realtime recorder (vn.py CTP ticks→bars): see docs/VN_RECORDER.md
   - AI market selection demo: uv run python run_cherryquant_ai_selection.py
 
@@ -54,7 +54,7 @@ High-level architecture and flow
 
 - Entry points and modes
   - run_cherryquant.py
-    - Orchestrates modes: simulation, backtest, live
+    - Orchestrates modes: simulation（推荐）、backtest（规划中）、live（规划中）
     - Sets up logging, data sources (Tushare by default; realtime via vn.py recorder), history caching, and an async simulation loop that pulls LLM decisions and simulates trades
   - run_cherryquant_ai_selection.py
     - Full-market scan and instrument selection demo using the AISelectionEngine
@@ -70,7 +70,7 @@ High-level architecture and flow
 
 - Market data acquisition (outside vn.py)
   - src/cherryquant/adapters/data_adapter/
-    - market_data_manager.py: pluggable sources; AKShare primary with optional SimNow/VnPy placeholders; automatic primary/fallback
+    - market_data_manager.py: 可插拔数据源；AKShare 为默认（dev），可选接入 SimNow/vn.py（预留实现）；支持主/备数据源自动切换
     - multi_symbol_manager.py: breadth scans of SHFE/DCE/CZCE/CFFEX with per-symbol metrics; caches recent snapshots
     - history_data_manager.py: simple local SQLite cache for historical bars with standardization
 
@@ -86,7 +86,7 @@ High-level architecture and flow
 
 - Strategy integration (vn.py)
   - src/cherryquant/cherry_quant_strategy.py
-    - CtaTemplate strategy wiring LLM decisions to trading actions (buy_to_enter/sell_to_enter/close/hold), basic risk gates and stop/target placeholders
+    - CtaTemplate strategy 将 LLM 决策落地为交易动作（buy_to_enter/sell_to_enter/close/hold），具备基础风险控制与止损/止盈逻辑
     - Current simulation path in run_cherryquant.py demonstrates decision→execution loop without live gateway
 
 - Configuration

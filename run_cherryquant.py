@@ -220,8 +220,8 @@ def run_backtest_mode():
     try:
         # 这里可以实现回测逻辑
         # 暂时输出提示信息
-        logger.info("回测模式开发中...")
-        logger.info("建议使用实盘模拟模式进行测试")
+        logger.info("回测模块规划中：当前版本尚未提供完整回测功能。")
+        logger.info("建议暂时使用“simulation”模式进行验证，或关注后续版本更新。")
 
     except Exception as e:
         logger.error(f"回测模式启动失败: {e}")
