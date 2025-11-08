@@ -259,7 +259,7 @@ async def create_strategy(config: StrategyConfig):
         if not agent_manager:
             raise HTTPException(status_code=503, detail="服务未初始化")
 
-        from ai.agents.strategy_agent import StrategyConfig as AgentStrategyConfig
+        from cherryquant.ai.agents.strategy_agent import StrategyConfig as AgentStrategyConfig
 
         strategy_config = AgentStrategyConfig(**config.dict())
         success = await agent_manager.add_strategy(strategy_config)
@@ -447,7 +447,7 @@ async def update_risk_config(config: RiskConfig):
         if not agent_manager:
             raise HTTPException(status_code=503, detail="服务未初始化")
 
-        from ai.agents.agent_manager import PortfolioRiskConfig
+        from cherryquant.ai.agents.agent_manager import PortfolioRiskConfig
 
         risk_config = PortfolioRiskConfig(**config.dict())
         agent_manager.risk_config = risk_config

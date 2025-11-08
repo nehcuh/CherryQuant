@@ -4,7 +4,7 @@ AI决策引擎测试
 
 import pytest
 import asyncio
-from ai.decision_engine.futures_engine import FuturesDecisionEngine
+from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
 
 @pytest.mark.asyncio
 async def test_ai_engine_init():

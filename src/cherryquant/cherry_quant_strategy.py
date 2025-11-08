@@ -14,7 +14,7 @@ from vnpy.trader.constant import Direction, Status, Offset
 from vnpy.trader.object import PositionData, AccountData, ContractData
 from vnpy.trader.utility import BarGenerator, ArrayManager
 
-from ai.decision_engine.futures_engine import FuturesDecisionEngine
+from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
 
 logger = logging.getLogger(__name__)
 
