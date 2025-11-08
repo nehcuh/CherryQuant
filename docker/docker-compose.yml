@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # PostgreSQL 时序数据库
@@ -42,31 +42,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # InfluxDB 备选时序数据库
-  influxdb:
-    image: influxdb:2.7-alpine
-    container_name: cherryquant-influxdb
-    environment:
-      DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: admin
-      DOCKER_INFLUXDB_INIT_PASSWORD: admin123456
-      DOCKER_INFLUXDB_INIT_ORG: cherryquant
-      DOCKER_INFLUXDB_INIT_BUCKET: market_data
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: cherryquant-super-secret-token
-    ports:
-      - "8086:8086"
-    volumes:
-      - influxdb_data:/var/lib/influxdb2
-      - influxdb_config:/etc/influxdb2
-    networks:
-      - cherryquant-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8086/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   # Grafana 数据可视化
   grafana:
     image: grafana/grafana:latest
@@ -84,7 +59,6 @@ services:
     restart: unless-stopped
     depends_on:
       - postgresql
-      - influxdb
 
   # pgAdmin PostgreSQL管理界面
   pgadmin:
@@ -108,10 +82,7 @@ volumes:
     driver: local
   redis_data:
     driver: local
-  influxdb_data:
-    driver: local
-  influxdb_config:
-    driver: local
+
   grafana_data:
     driver: local
   pgadmin_data:

@@ -1,7 +1,7 @@
 """
 历史数据管理器
 用于获取和存储期货历史K线数据
-支持多种数据源：AKShare、PostgreSQL、InfluxDB等
+支持多种数据源：AKShare、PostgreSQL等
 """
 
 import logging
@@ -43,12 +43,7 @@ class HistoryDataManager:
                 "user": os.getenv("POSTGRES_USER", "cherryquant"),
                 "password": os.getenv("POSTGRES_PASSWORD", "cherryquant123"),
             },
-            "influxdb": {
-                "url": os.getenv("INFLUXDB_URL", "http://localhost:8086"),
-                "token": os.getenv("INFLUXDB_TOKEN", ""),
-                "org": os.getenv("INFLUXDB_ORG", "cherryquant"),
-                "bucket": os.getenv("INFLUXDB_BUCKET", "market_data"),
-            },
+
         }
 
         self.connections = {}
@@ -66,13 +61,7 @@ class HistoryDataManager:
         except Exception as e:
             logger.warning(f"PostgreSQL连接失败: {e}")
 
-        try:
-            # InfluxDB连接
-            self.connections["influxdb"] = InfluxDBConnection(
-                self.db_configs["influxdb"]
-            )
-        except Exception as e:
-            logger.warning(f"InfluxDB连接失败或未安装: {e}")
+
 
     async def get_historical_data(
         self,
@@ -173,11 +162,11 @@ class HistoryDataManager:
         symbol_map = {
             "rb": "RB",
             "i": "I",
-            "j": "J", 
+            "j": "J",
             "jm": "JM",
             "cu": "CU",
             "al": "AL",
-            "zn": "ZN", 
+            "zn": "ZN",
             "au": "AU",
             "ag": "AG",
         }
@@ -333,7 +322,7 @@ class PostgreSQLConnection(DatabaseConnection):
                 datetime_obj = row["datetime"]
                 if pd.isna(datetime_obj):
                     continue
-                    
+
                 records.append(
                     (
                         datetime_obj,
@@ -352,10 +341,10 @@ class PostgreSQLConnection(DatabaseConnection):
             # 批量插入
             await self.conn.executemany(
                 """
-                INSERT INTO kline_data 
+                INSERT INTO kline_data
                 (datetime, symbol, exchange, interval, open, high, low, close, volume, open_interest)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                ON CONFLICT (datetime, symbol, exchange, interval) 
+                ON CONFLICT (datetime, symbol, exchange, interval)
                 DO UPDATE SET
                     open = EXCLUDED.open,
                     high = EXCLUDED.high,
@@ -441,147 +430,4 @@ class PostgreSQLConnection(DatabaseConnection):
 
         except Exception as e:
             logger.error(f"PostgreSQL获取数据失败: {e}")
-            return pd.DataFrame()
-
-
-class InfluxDBConnection(DatabaseConnection):
-    """InfluxDB 连接"""
-
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
-        self.client = None
-
-    async def test_connection(self) -> bool:
-        """测试InfluxDB连接"""
-        try:
-            from influxdb_client import InfluxDBClient
-
-            self.client = InfluxDBClient(
-                url=self.config["url"],
-                token=self.config["token"],
-                org=self.config["org"],
-            )
-
-            # 测试连接
-            health = self.client.health()
-            self.is_connected = health.status == "pass"
-
-            if self.is_connected:
-                logger.info("✅ InfluxDB连接测试成功")
-            else:
-                logger.warning(f"InfluxDB连接失败: {health.message}")
-
-            return self.is_connected
-
-        except ImportError:
-            logger.warning("influxdb-client未安装，跳过InfluxDB连接")
-            return False
-        except Exception as e:
-            logger.warning(f"InfluxDB连接失败: {e}")
-            return False
-
-    async def save_kline_data(
-        self, df: pd.DataFrame, symbol: str, exchange: str, interval: str
-    ) -> bool:
-        """保存K线数据到InfluxDB"""
-        try:
-            from influxdb_client import Point
-            from influxdb_client.client.write_api import SYNCHRONOUS
-
-            if not self.client:
-                await self.test_connection()
-
-            write_api = self.client.write_api(write_options=SYNCHRONOUS)
-
-            # 转换数据格式
-            points = []
-            for _, row in df.iterrows():
-                point = (
-                    Point("kline_data")
-                    .tag("symbol", symbol)
-                    .tag("exchange", exchange)
-                    .tag("interval", interval)
-                    .field("open", float(row["open"]))
-                    .field("high", float(row["high"]))
-                    .field("low", float(row["low"]))
-                    .field("close", float(row["close"]))
-                    .field("volume", int(row["volume"]))
-                )
-
-                if "open_interest" in row and pd.notna(row["open_interest"]):
-                    point = point.field("open_interest", int(row["open_interest"]))
-
-                # 确保 InfluxDB 可以正确处理时间戳
-                datetime_obj = row["datetime"]
-                if hasattr(datetime_obj, "to_pydatetime"):
-                    datetime_obj = datetime_obj.to_pydatetime()
-                # 处理时区 - 确保使用 UTC 时间
-                if datetime_obj.tzinfo is None:
-                    import pytz
-
-                    datetime_obj = pytz.UTC.localize(datetime_obj)
-                point = point.time(datetime_obj)
-                points.append(point)
-
-            write_api.write(bucket=self.config["bucket"], record=points)
-            logger.info(f"✅ InfluxDB保存 {len(points)} 条K线数据: {symbol}.{exchange}")
-            return True
-
-        except Exception as e:
-            logger.error(f"InfluxDB保存数据失败: {e}")
-            return False
-
-    async def get_kline_data(
-        self,
-        symbol: str,
-        exchange: str,
-        interval: str,
-        start_time: datetime = None,
-        end_time: datetime = None,
-        limit: int = None,
-    ) -> pd.DataFrame:
-        """从InfluxDB获取K线数据"""
-        try:
-            if not self.client:
-                await self.test_connection()
-
-            query_api = self.client.query_api()
-
-            # 构建查询
-            query = f"""
-                from(bucket: "{self.config["bucket"]}")
-                |> range(start: {start_time or datetime.now() - timedelta(days=30)}, stop: {end_time or datetime.now()})
-                |> filter(fn: (r) => r["_measurement"] == "kline_data")
-                |> filter(fn: (r) => r["symbol"] == "{symbol}" and r["exchange"] == "{exchange}" and r["interval"] == "{interval}")
-                |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-            """
-
-            # 执行查询
-            result = query_api.query(org=self.config["org"], query=query)
-            data = []
-
-            for table in result:
-                for record in table.records:
-                    data.append(
-                        {
-                            "datetime": record.get_time(),
-                            "open": record.get_value("open"),
-                            "high": record.get_value("high"),
-                            "low": record.get_value("low"),
-                            "close": record.get_value("close"),
-                            "volume": record.get_value("volume"),
-                            "open_interest": record.get_value("open_interest", 0),
-                        }
-                    )
-
-            if data:
-                df = pd.DataFrame(data)
-                df["datetime"] = pd.to_datetime(df["datetime"])
-                df = df.sort_values("datetime").reset_index(drop=True)
-                return df
-            else:
-                return pd.DataFrame()
-
-        except Exception as e:
-            logger.error(f"InfluxDB获取数据失败: {e}")
             return pd.DataFrame()

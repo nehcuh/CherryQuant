@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   tester:
@@ -26,7 +26,6 @@ services:
     depends_on:
       - postgresql
       - redis
-      - influxdb
     tty: true
     command: bash -lc "sleep infinity"
 

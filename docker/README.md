@@ -8,7 +8,7 @@ CherryQuant 使用多数据库架构，每个数据库都有特定用途：
 
 - **PostgreSQL + TimescaleDB**: 主要时序数据库，存储市场数据、技术指标、交易记录
 - **Redis**: 内存缓存，存储实时数据和AI决策缓存
-- **InfluxDB**: 备选时序数据库，用于高频数据存储
+
 - **Grafana**: 数据可视化面板
 - **pgAdmin**: PostgreSQL 管理界面
 
@@ -33,7 +33,7 @@ docker-compose -f docker/docker-compose.yml ps
 |------|------|--------|------|
 | PostgreSQL (主库) | localhost:5432 | cherryquant | cherryquant123 |
 | Redis | localhost:6379 | - | - |
-| InfluxDB | localhost:8086 | admin | admin123456 |
+
 | Grafana | localhost:3000 | admin | cherryquant123 |
 | pgAdmin | localhost:5050 | admin@cherryquant.com | cherryquant123 |
 
@@ -54,11 +54,7 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_DB=0
 
-# InfluxDB 配置（可选）
-INFLUXDB_URL=http://localhost:8086
-INFLUXDB_TOKEN=cherryquant-super-secret-token
-INFLUXDB_ORG=cherryquant
-INFLUXDB_BUCKET=market_data
+
 ```
 
 ## 📊 数据库表结构
@@ -139,7 +135,7 @@ docker-compose -f docker/docker-compose.yml down -v
 ### 数据库性能监控
 - PostgreSQL: TimescaleDB 时序性能
 - Redis: 内存使用和缓存命中率
-- InfluxDB: 高频数据写入性能
+
 
 ### 业务指标监控
 - 实时行情更新频率
@@ -273,4 +269,4 @@ docker-compose -f docker/docker-compose.yml exec postgresql tail -f /var/log/pos
 ---
 
 🍒 CherryQuant Database Infrastructure
-Built with TimescaleDB + Redis + InfluxDB
+Built with TimescaleDB + Redis
