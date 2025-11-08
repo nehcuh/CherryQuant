@@ -60,11 +60,14 @@ cd CherryQuant
 #### 2. 安装依赖
 
 ```bash
-# 使用uv安装所有依赖
-uv sync
+# 使用uv安装所有依赖（含开发工具）
+uv sync --group dev
 
-# 验证安装
-uv run python --version
+# 安装包（可编辑模式，启用 cherryquant.* 导入）
+uv run pip install -e .
+
+# 验证安装与导入
+uv run python -c "import cherryquant, sys; print('OK', cherryquant.__version__)"
 ```
 
 #### 3. 启动数据库服务
@@ -304,7 +307,8 @@ uv run python run_cherryquant_multi_agent.py
 - 组合级风险管理
 - 策略间协调和资金分配
 
-## 🧪 测试和验证
+## 🧪 测试和验证（CI）
+仓库已内置 GitHub Actions 工作流（.github/workflows/ci.yml），使用 uv 同步依赖并执行 Ruff（lint）、Black（格式检查）、Mypy（类型检查）与 Pytest（单元测试）。
 
 ### 配置验证
 ```bash
@@ -364,26 +368,23 @@ asyncio.run(test())
 ### 项目结构
 ```
 CherryQuant/
-├── ai/                      # AI决策引擎
-│   ├── agents/             # 多策略代理
-│   ├── decision_engine/    # 决策引擎
-│   └── prompts/            # 提示词模板
-├── adapters/               # 数据适配器
-│   ├── data_adapter/       # 数据获取
-│   │   ├── contract_resolver.py  # 主力合约解析
-│   │   └── market_data_manager.py
-│   ├── data_storage/       # 数据存储
-│   └── vnpy_recorder/      # vnpy数据记录
-├── src/                    # 核心功能
+├── src/
+│   ├── cherryquant/                # 核心包（统一从 cherryquant.* 导入）
+│   │   ├── ai/                     # AI决策引擎
+│   │   ├── adapters/               # 数据/存储/录制适配层
+│   │   ├── services/               # 后台服务（数据采集等）
+│   │   ├── web/                    # Web API 与静态资源
+│   │   └── cherry_quant_strategy.py
 │   └── trading/
-│       ├── vnpy_gateway.py # CTP网关封装
-│       └── order_manager.py
-├── config/                 # 配置管理
-│   ├── strategies.json     # 策略和品种池配置
-│   └── settings/           # Pydantic配置验证
-├── docs/                   # 文档
-├── tests/                  # 测试
-└── run_*.py               # 运行脚本
+│       ├── vnpy_gateway.py         # CTP网关封装
+│       └── order_manager.py        # 智能订单管理
+├── config/                         # 配置管理
+│   ├── strategies.json             # 策略与品种池配置
+│   └── settings/                   # Pydantic配置验证
+├── docker/                         # 基础设施编排（TimescaleDB/Postgres + Redis）
+├── docs/                           # 文档
+├── tests/                          # 测试
+└── run_*.py                        # 运行脚本
 ```
 
 ### 贡献指南

@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        shell: bash
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          uv --version
+
+      - name: Cache uv and virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Sync dependencies (dev)
+        shell: bash
+        run: |
+          uv sync --group dev
+
+      - name: Install package (editable)
+        shell: bash
+        run: |
+          uv run pip install -e .
+
+      - name: Lint (ruff)
+        shell: bash
+        run: |
+          uv run ruff check .
+
+      - name: Format check (black)
+        shell: bash
+        run: |
+          uv run black --check .
+
+      - name: Type check (mypy)
+        shell: bash
+        run: |
+          uv run mypy . --ignore-missing-imports
+
+      - name: Run tests (pytest)
+        shell: bash
+        env:
+          OPENAI_API_KEY: ""  # ensure tests do not call external API
+          PYTHONUNBUFFERED: "1"
+        run: |
+          uv run pytest -q

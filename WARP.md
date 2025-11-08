@@ -62,26 +62,26 @@ High-level architecture and flow
     - End-to-end database integration demo: generate multi-timeframe data, compute indicators, store/fetch via Postgres/Redis
 
 - AI decisioning
-  - ai/decision_engine/futures_engine.py
-    - FuturesDecisionEngine: fetches market data (AKShare), computes indicators (MA, RSI, MACD), builds prompts (ai/prompts/futures_prompts.py), and requests JSON decisions via ai/llm_client/openai_client.py
-  - ai/decision_engine/ai_selection_engine.py
-    - AISelectionEngine: market-wide scan using adapters/data_adapter/multi_symbol_manager.py, builds a comprehensive prompt (ai/prompts/ai_selection_prompts.py), validates and returns a structured selection + trade plan
-  - ai/llm_client/openai_client.py
+  - src/cherryquant/ai/decision_engine/futures_engine.py
+    - FuturesDecisionEngine: fetches market data (AKShare), computes indicators (MA, RSI, MACD), builds prompts (src/cherryquant/ai/prompts/futures_prompts.py), and requests JSON decisions via src/cherryquant/ai/llm_client/openai_client.py
+  - src/cherryquant/ai/decision_engine/ai_selection_engine.py
+    - AISelectionEngine: market-wide scan using src/cherryquant/adapters/data_adapter/multi_symbol_manager.py, builds a comprehensive prompt (src/cherryquant/ai/prompts/ai_selection_prompts.py), validates and returns a structured selection + trade plan
+  - src/cherryquant/ai/llm_client/openai_client.py
     - Thin wrapper around OpenAI Chat Completions; async facade provided; validates decision JSON
 
 - Market data acquisition (outside vn.py)
-  - adapters/data_adapter/
+  - src/cherryquant/adapters/data_adapter/
     - market_data_manager.py: pluggable sources; AKShare primary with optional SimNow/VnPy placeholders; automatic primary/fallback
     - multi_symbol_manager.py: breadth scans of SHFE/DCE/CZCE/CFFEX with per-symbol metrics; caches recent snapshots
     - history_data_manager.py: simple local SQLite cache for historical bars with standardization
 
 - Multi-timeframe analytics (LLM-friendly)
-  - adapters/data_storage/timeframe_data_manager.py
+  - src/cherryquant/adapters/data_storage/timeframe_data_manager.py
     - TimeFrameDataManager: produces OHLCV series across monthly→minute, computes indicators, derives summaries (trend/momentum/volatility/risk), and assembles AI-optimized payloads; in demo, uses generated sample series
 
 - Data persistence and caching
-  - adapters/data_storage/database_manager.py + config/database_config.py
-    - Unified async manager for Postgres (TimescaleDB), Redis, optional InfluxDB
+  - src/cherryquant/adapters/data_storage/database_manager.py + config/database_config.py
+    - Unified async manager for Postgres (TimescaleDB) and Redis
     - CRUD for market_data, technical_indicators, ai_decisions; Redis-backed read-through caching
     - docker/sql/init.sql provisions hypertables, indexes, materialized views, and policies
 
@@ -92,7 +92,7 @@ High-level architecture and flow
 
 - Configuration
   - config/settings/settings.py: trading parameters, AI thresholds, risk limits, contract metadata
-  - config/database_config.py: Postgres/Redis/Influx endpoints, retention and source update cadence
+  - config/database_config.py: Postgres/Redis endpoints, retention and source update cadence
 
 Practical tips for this repo
 
