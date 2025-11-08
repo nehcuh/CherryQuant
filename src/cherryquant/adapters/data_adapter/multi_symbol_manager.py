@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 
-from adapters.data_storage.database_manager import get_database_manager, DatabaseManager
-from adapters.data_storage.timeframe_data_manager import TimeFrame
+from cherryquant.adapters.data_storage.database_manager import get_database_manager, DatabaseManager
+from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame
 from config.database_config import get_database_config
 
 logger = logging.getLogger(__name__)

@@ -15,8 +15,8 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "adapters"))
 sys.path.insert(0, str(project_root / "ai"))
 
-from adapters.data_storage.database_manager import get_database_manager
-from adapters.data_storage.timeframe_data_manager import TimeFrame, TimeFrameDataManager, MarketDataPoint, TechnicalIndicators
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, TimeFrameDataManager, MarketDataPoint, TechnicalIndicators
 from config.database_config import get_database_config
 
 def setup_logging():

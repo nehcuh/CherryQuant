@@ -131,7 +131,7 @@ class HistoryDataManager:
 
             # 使用 Tushare 获取主连/日线历史
             try:
-                from adapters.data_adapter.market_data_manager import TushareDataSource
+                from cherryquant.adapters.data_adapter.market_data_manager import TushareDataSource
             except Exception:
                 logger.warning("Tushare 依赖不可用，无法获取外部日线数据")
                 return pd.DataFrame()

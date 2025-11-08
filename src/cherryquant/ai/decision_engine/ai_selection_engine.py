@@ -9,36 +9,11 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import asyncio
 
-# 修复导入路径
-try:
-    from ..llm_client.openai_client import AsyncOpenAIClient
-    from ..prompts.ai_selection_prompts import AI_SELECTION_SYSTEM_PROMPT, AI_SELECTION_USER_PROMPT_TEMPLATE
-    from ..data_adapter.multi_symbol_manager import multi_symbol_manager
-except ImportError:
-    # 直接导入
-    import sys
-    from pathlib import Path
-    project_root = Path(__file__).parent.parent.parent.parent
-    sys.path.insert(0, str(project_root / "ai"))
-    sys.path.insert(0, str(project_root / "adapters"))
+from ..llm_client.openai_client import AsyncOpenAIClient
+from ..prompts.ai_selection_prompts import AI_SELECTION_SYSTEM_PROMPT, AI_SELECTION_USER_PROMPT_TEMPLATE
+from ...adapters.data_adapter.multi_symbol_manager import multi_symbol_manager
 
-    from llm_client.openai_client import AsyncOpenAIClient
-    from prompts.ai_selection_prompts import AI_SELECTION_SYSTEM_PROMPT, AI_SELECTION_USER_PROMPT_TEMPLATE
-    from data_adapter.multi_symbol_manager import multi_symbol_manager
-
-# 导入合约解析器
-try:
-    from adapters.data_adapter.contract_resolver import get_contract_resolver
-except ImportError:
-    try:
-        import sys
-        from pathlib import Path
-        project_root = Path(__file__).parent.parent.parent
-        sys.path.insert(0, str(project_root))
-        from adapters.data_adapter.contract_resolver import get_contract_resolver
-    except ImportError:
-        logger.warning("无法导入ContractResolver，主力合约解析将受限")
-        get_contract_resolver = None
+from ...adapters.data_adapter.contract_resolver import get_contract_resolver
 
 logger = logging.getLogger(__name__)
 

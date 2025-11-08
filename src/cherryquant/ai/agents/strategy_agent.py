@@ -139,7 +139,7 @@ class StrategyAgent:
         )
 
         # 合约解析器（用于动态获取主力合约）
-        from adapters.data_adapter.contract_resolver import ContractResolver
+        from cherryquant.adapters.data_adapter.contract_resolver import ContractResolver
         import os
         tushare_token = os.getenv("TUSHARE_TOKEN")
         self.contract_resolver = ContractResolver(tushare_token) if tushare_token else None

@@ -9,11 +9,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Callable, List
 
-from adapters.data_storage.database_manager import (
+from cherryquant.adapters.data_storage.database_manager import (
     get_database_manager,
     DatabaseManager,
 )
-from adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
+from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
 from config.database_config import get_database_config
 from src.trading.vnpy_gateway import VNPyGateway
 

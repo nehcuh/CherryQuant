@@ -17,8 +17,8 @@ import pandas as pd
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from adapters.data_storage.database_manager import get_database_manager
-from adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
 from config.database_config import get_database_config
 import tushare as ts
 

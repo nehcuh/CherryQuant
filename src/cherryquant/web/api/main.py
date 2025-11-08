@@ -17,9 +17,9 @@ import uvicorn
 from pathlib import Path
 
 # 项目导入
-from ai.agents.agent_manager import AgentManager
-from adapters.data_storage.database_manager import DatabaseManager
-from utils.ai_logger import AITradingLogger
+from cherryquant.ai.agents.agent_manager import AgentManager
+from cherryquant.adapters.data_storage.database_manager import DatabaseManager
+from cherryquant.utils.ai_logger import AITradingLogger
 
 logger = logging.getLogger(__name__)
 

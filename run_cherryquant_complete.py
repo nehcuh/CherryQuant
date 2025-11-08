@@ -17,13 +17,13 @@ from datetime import datetime
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
-from adapters.data_storage.database_manager import get_database_manager
-from adapters.data_adapter.market_data_manager import MarketDataManager
+from cherryquant.ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
 from src.risk.portfolio_risk_manager import PortfolioRiskManager
 from src.alerts.alert_manager import AlertManager
 from utils.ai_logger import get_ai_logger
-from web.api.main import create_app, run_server
+from cherryquant.web.api.main import create_app, run_server
 from config.settings.settings import TRADING_CONFIG, AI_CONFIG, RISK_CONFIG
 from config.database_config import get_database_config
 from config.alert_config import get_alert_config
@@ -157,7 +157,7 @@ class CherryQuantSystem:
             await self._check_and_init_historical_data()
 
             # 2. 初始化市场数据管理器
-            from adapters.data_adapter.market_data_manager import create_default_data_manager
+            from cherryquant.adapters.data_adapter.market_data_manager import create_default_data_manager
             self.market_data_manager = create_default_data_manager(db_manager=self.db_manager)
             logger.info("✅ 市场数据管理器初始化完成")
 
@@ -165,7 +165,7 @@ class CherryQuantSystem:
             if self.data_mode == "live":
                 try:
                     from src.trading.vnpy_gateway import VNPyGateway
-                    from adapters.vnpy_recorder.realtime_recorder import RealtimeRecorder
+                    from cherryquant.adapters.vnpy_recorder.realtime_recorder import RealtimeRecorder
 
                     # 获取CTP配置
                     ctp_userid = os.getenv('CTP_USERID') or os.getenv('SIMNOW_USERID')
@@ -438,7 +438,7 @@ class CherryQuantSystem:
             if self.agent_manager and self.agent_manager.agents:
                 # 导入合约解析器
                 try:
-                    from adapters.data_adapter.contract_resolver import get_contract_resolver
+                    from cherryquant.adapters.data_adapter.contract_resolver import get_contract_resolver
                     resolver = get_contract_resolver(self.tushare_token)
                 except Exception as e:
                     logger.warning(f"合约解析器初始化失败: {e}")
@@ -467,7 +467,7 @@ class CherryQuantSystem:
                                 vt_symbols.append(symbol)
                             else:
                                 # 推断交易所
-                                from adapters.data_adapter.contract_resolver import COMMODITY_EXCHANGE_MAP
+                                from cherryquant.adapters.data_adapter.contract_resolver import COMMODITY_EXCHANGE_MAP
                                 commodity = symbol[:2].lower() if len(symbol) > 2 else symbol.lower()
                                 exchange = COMMODITY_EXCHANGE_MAP.get(commodity, 'SHFE')
                                 vt_symbols.append(f"{symbol}.{exchange}")

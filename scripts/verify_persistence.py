@@ -13,8 +13,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import akshare as ak
-from adapters.data_storage.database_manager import get_database_manager
-from adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
 from config.database_config import DATABASE_CONFIG
 
 

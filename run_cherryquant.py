@@ -27,14 +27,14 @@ except Exception:  # vn.py not installed/available on macOS without CTP
     MainEngine = None  # type: ignore
 
 from config.settings.settings import TRADING_CONFIG, LOGGING_CONFIG, AI_CONFIG
-from adapters.data_adapter.market_data_manager import (
+from cherryquant.adapters.data_adapter.market_data_manager import (
     create_default_data_manager,
     create_simnow_data_manager,
     create_tushare_data_manager,
 )
-from adapters.data_adapter.history_data_manager import HistoryDataManager
-from adapters.data_adapter.contract_resolver import ContractResolver
-from adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_adapter.history_data_manager import HistoryDataManager
+from cherryquant.adapters.data_adapter.contract_resolver import ContractResolver
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
 from config.database_config import get_database_config
 
 
@@ -167,7 +167,7 @@ async def test_ai_connection():
     logger.info("正在测试AI连接...")
 
     try:
-        from ai.decision_engine.futures_engine import FuturesDecisionEngine
+        from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
         from config.settings.settings import AI_CONFIG
         import os
 
@@ -294,7 +294,7 @@ async def simulate_ai_trading_loop(strategy_settings, market_data_manager, db_ma
     logger.info("开始模拟AI交易循环（5m 对齐）...")
 
     try:
-        from ai.decision_engine.futures_engine import FuturesDecisionEngine
+        from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
 
         ai_engine = FuturesDecisionEngine(
             db_manager=db_manager, market_data_manager=market_data_manager

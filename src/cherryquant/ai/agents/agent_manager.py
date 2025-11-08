@@ -12,7 +12,7 @@ import json
 import os
 
 from .strategy_agent import StrategyAgent, StrategyConfig, AgentStatus
-from adapters.data_storage.database_manager import DatabaseManager
+from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 
 logger = logging.getLogger(__name__)
 

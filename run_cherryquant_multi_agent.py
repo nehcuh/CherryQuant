@@ -14,9 +14,9 @@ from datetime import datetime
 
 
 
-from ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
-from adapters.data_storage.database_manager import get_database_manager
-from adapters.data_adapter.market_data_manager import MarketDataManager
+from cherryquant.ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
 from config.settings.settings import TRADING_CONFIG, AI_CONFIG, RISK_CONFIG
 from config.database_config import get_database_config
 

@@ -17,15 +17,15 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 from config.settings.settings import TRADING_CONFIG, LOGGING_CONFIG
-from adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
 from config.database_config import DATABASE_CONFIG
 
 # 添加路径
 sys.path.insert(0, str(project_root / "adapters"))
 sys.path.insert(0, str(project_root / "ai"))
 
-from data_adapter.multi_symbol_manager import multi_symbol_manager
-from ai.decision_engine.ai_selection_engine import AISelectionEngine
+from cherryquant.adapters.data_adapter.multi_symbol_manager import multi_symbol_manager
+from cherryquant.ai.decision_engine.ai_selection_engine import AISelectionEngine
 
 def setup_logging():
     """配置日志"""

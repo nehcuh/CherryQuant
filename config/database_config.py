@@ -4,7 +4,7 @@ CherryQuant 数据库配置
 
 import os
 from typing import Dict, Any
-from adapters.data_storage.database_manager import DatabaseConfig
+from cherryquant.adapters.data_storage.database_manager import DatabaseConfig
 
 def get_database_config() -> DatabaseConfig:
     """获取数据库配置"""

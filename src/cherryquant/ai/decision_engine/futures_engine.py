@@ -12,8 +12,8 @@ import numpy as np
 
 from ..prompts.futures_prompts import FUTURES_SYSTEM_PROMPT, FUTURES_USER_PROMPT_TEMPLATE
 from ..llm_client.openai_client import AsyncOpenAIClient
-from adapters.data_adapter.market_data_manager import MarketDataManager
-from adapters.data_storage.database_manager import DatabaseManager
+from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
+from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class FuturesDecisionEngine:
             # 读取 DB 中 5m 为主视角
             df5 = None
             if self.db_manager:
-                from adapters.data_storage.timeframe_data_manager import TimeFrame as TF
+                from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame as TF
                 try:
                     pts5 = await self.db_manager.get_market_data(sym, exchange, TF.FIVE_MIN, limit=120)
                     if pts5:
@@ -240,13 +240,13 @@ class FuturesDecisionEngine:
         # 提取品种代码 - 优先尝试单字符匹配，然后双字符
         if not symbol:
             return symbol.upper()
-            
+
         # 首先尝试单字符品种代码（如 'i' for 铁矿石）
         if len(symbol) >= 1:
             commodity = symbol[0].lower()
             if commodity in symbol_map:
                 return symbol_map[commodity]
-        
+
         # 如果单字符不匹配，尝试双字符品种代码（如 'rb' for 螺纹钢）
         if len(symbol) >= 2:
             commodity = symbol[:2].lower()

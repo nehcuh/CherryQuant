@@ -383,7 +383,7 @@ class MarketDataManager:
         # Verify that the source implements the MarketDataSource protocol
         if not isinstance(source, MarketDataSource):
             raise TypeError(f"Data source must implement MarketDataSource protocol, got {type(source)}")
-            
+
         self.data_sources.append(source)
 
         if is_primary:
@@ -426,7 +426,7 @@ class MarketDataManager:
 
         try:
             # 从数据库获取最新的5m K线收盘价
-            from adapters.data_storage.timeframe_data_manager import TimeFrame
+            from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame
             data = await self.db_manager.get_market_data(
                 symbol=symbol,
                 exchange="SHFE",  # 默认上期所，后续可改为动态获取
@@ -518,7 +518,7 @@ class MarketDataManager:
     def get_data_sources_status(self) -> List[DataSourceStatus]:
         """获取数据源状态"""
         statuses = []
-        
+
         if self.primary_source:
             statuses.append(DataSourceStatus(
                 name=self.primary_source.name,
@@ -526,7 +526,7 @@ class MarketDataManager:
                 description=self.primary_source.description,
                 response_time_ms=None  # Would need to measure this in actual requests
             ))
-        
+
         for source in self.fallback_sources:
             statuses.append(DataSourceStatus(
                 name=source.name,
