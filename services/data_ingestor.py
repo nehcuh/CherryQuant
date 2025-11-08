@@ -37,8 +37,22 @@ def setup_logging() -> None:
 
 
 def _ak_code(exchange: str, symbol: str) -> str:
-    mapping = ChineseFuturesMarket.AKSHARE_MAPPING.get(exchange, {})
-    return mapping.get(symbol, symbol.upper())
+    """
+    Convert internal symbol to AKShare main continuous code.
+    Rules:
+    - If symbol contains digits (e.g., rb2501), strip digits to get commodity
+    - Use uppercase commodity + '0' (e.g., rb -> RB0, IF -> IF0)
+    - Fallback to uppercased input
+    """
+    try:
+        import re
+        commodity = re.sub(r"\d+", "", symbol or "").strip()
+        if not commodity:
+            return (symbol or "").upper()
+        # Some AKShare codes are single-letter (e.g., i -> I0) or multi-letter (jm -> JM0)
+        return f"{commodity.upper()}0"
+    except Exception:
+        return (symbol or "").upper()
 
 
 def _to_points(df) -> List[MarketDataPoint]:

@@ -275,6 +275,26 @@ class StrategyAgent:
     async def _execute_decision(self, symbol: str, decision: Dict[str, Any]) -> None:
         """执行AI决策"""
         try:
+            # 将 FuturesDecisionEngine 的输出字段标准化为代理预期字段
+            signal = decision.get("signal")
+            if signal and "action" not in decision:
+                if signal == "buy_to_enter":
+                    decision["action"] = "buy"
+                elif signal == "sell_to_enter":
+                    decision["action"] = "sell"
+                elif signal == "close":
+                    # close 映射为全量卖出（若有持仓），否则保持观望
+                    if self.positions.get(symbol):
+                        decision["action"] = "sell"
+                        decision["quantity"] = decision.get("quantity", 0) or self.positions[symbol].quantity
+                    else:
+                        decision["action"] = "hold"
+                else:
+                    decision["action"] = "hold"
+            # 将 profit_target 对齐为 take_profit
+            if "profit_target" in decision and "take_profit" not in decision:
+                decision["take_profit"] = decision["profit_target"]
+
             action = decision.get("action", "hold")
             quantity = decision.get("quantity", 0)
             price = decision.get("price", 0)

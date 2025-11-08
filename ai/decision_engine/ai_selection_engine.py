@@ -271,6 +271,14 @@ class AISelectionEngine:
         try:
             minutes_elapsed = int((datetime.now() - self.start_time).total_seconds() / 60)
             current_time = datetime.now().strftime('%H:%M:%S')
+            # 推断交易时段（避免模板缺少 market_session 抛错）
+            hour = datetime.now().hour
+            if 9 <= hour < 15:
+                market_session = "day"
+            elif hour >= 21 or hour < 3:
+                market_session = "night"
+            else:
+                market_session = "closed"
 
             # 格式化市场数据
             contract_data_str = self._format_contract_data_for_prompt(market_data.get("exchange_data", {}))
@@ -288,6 +296,7 @@ class AISelectionEngine:
             user_prompt = AI_SELECTION_USER_PROMPT_TEMPLATE.format(
                 minutes_elapsed=minutes_elapsed,
                 current_time=current_time,
+                market_session=market_session,
                 total_contracts=market_data.get("total_contracts", 0),
                 market_regime=f"{market_data.get('market_sentiment', 'unknown')} / {market_data.get('volatility_index', 'unknown')} volatility",
                 volatility_index=market_data.get("avg_volatility", 0),

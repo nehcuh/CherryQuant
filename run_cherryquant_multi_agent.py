@@ -8,18 +8,16 @@ import asyncio
 import logging
 import signal
 import sys
-from pathlib import Path
+
 from typing import Optional
 from datetime import datetime
 
-# 添加项目路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+
 
 from ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
 from adapters.data_storage.database_manager import get_database_manager
 from adapters.data_adapter.market_data_manager import MarketDataManager
-from config.settings.settings import TRADING_CONFIG, AI_CONFIG, DATA_CONFIG, RISK_CONFIG
+from config.settings.settings import TRADING_CONFIG, AI_CONFIG, RISK_CONFIG
 from config.database_config import get_database_config
 
 # 配置日志

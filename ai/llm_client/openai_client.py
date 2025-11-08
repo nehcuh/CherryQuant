@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class LLMClient(Protocol):
     """LLM客户端协议定义"""
-    
+
     async def get_trading_decision(
         self,
         system_prompt: str,
@@ -43,7 +43,7 @@ class AsyncOpenAIClient:
         """初始化OpenAI客户端"""
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        self.model = os.getenv("MODEL_NAME", "gpt-4")
+        self.model = os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "gpt-4"
 
         # 允许无密钥初始化（演示/测试降级），在调用时再做可用性判断
         if not self.api_key:
@@ -239,7 +239,7 @@ class AsyncOpenAIClient:
 
 class OpenAIClient:
     """同步OpenAI客户端类（保留向后兼容）"""
-    
+
     def __init__(self):
         self.async_client = AsyncOpenAIClient()
 
