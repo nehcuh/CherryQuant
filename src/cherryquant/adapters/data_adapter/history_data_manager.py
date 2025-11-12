@@ -1,32 +1,79 @@
 """
-历史数据管理器
+历史数据管理器 - QuantBox 增强版
 用于获取和存储期货历史K线数据
-支持多种数据源：AKShare、PostgreSQL等
+集成 QuantBox 高性能数据管理系统
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+try:
+    # 导入 QuantBox 适配器
+    from ..quantbox_adapter.cherryquant_adapter import CherryQuantQuantBoxAdapter
+    from ..quantbox_adapter.data_bridge import DataBridge
+    QUANTBOX_AVAILABLE = True
+except ImportError:
+    logger.warning("QuantBox 不可用，将使用原始实现")
+    QUANTBOX_AVAILABLE = False
+    CherryQuantQuantBoxAdapter = None
+    DataBridge = None
+
 
 class HistoryDataManager:
-    """历史数据管理器"""
+    """历史数据管理器 - QuantBox 增强版"""
 
-    def __init__(self, cache_size: int = 1000, cache_ttl: int = 3600):
+    def __init__(
+        self,
+        cache_size: int = 1000,
+        cache_ttl: int = 3600,
+        enable_quantbox: bool = True,
+        use_async: bool = True,
+        enable_dual_write: bool = False
+    ):
         """
         初始化历史数据管理器
 
         Args:
             cache_size: 缓存大小
             cache_ttl: 缓存TTL（秒）
+            enable_quantbox: 是否启用 QuantBox 集成
+            use_async: 是否使用异步操作
+            enable_dual_write: 是否启用双写机制
         """
         self.cache_size = cache_size
         self.cache_ttl = cache_ttl
         self.data_cache = {}
-        self._setup_database_connections()
+
+        # QuantBox 集成配置
+        self.enable_quantbox = enable_quantbox and QUANTBOX_AVAILABLE
+        self.use_async = use_async
+        self.enable_dual_write = enable_dual_write
+
+        # 初始化 QuantBox 组件
+        if self.enable_quantbox:
+            try:
+                self.quantbox_adapter = CherryQuantQuantBoxAdapter(
+                    use_async=self.use_async,
+                    auto_warm=True
+                )
+                self.data_bridge = DataBridge(
+                    adapter=self.quantbox_adapter,
+                    enable_dual_write=self.enable_dual_write,
+                    cache_ttl=self.cache_ttl
+                )
+                logger.info("✅ QuantBox 集成已启用")
+            except Exception as e:
+                logger.error(f"❌ QuantBox 初始化失败: {e}")
+                self.enable_quantbox = False
+
+        # 保留原始数据库连接作为后备
+        if not self.enable_quantbox or self.enable_dual_write:
+            self._setup_database_connections()
 
     def _setup_database_connections(self):
         """设置数据库连接"""
@@ -71,9 +118,10 @@ class HistoryDataManager:
         start_date: str = None,
         end_date: str = None,
         days: int = 30,
+        prefer_quantbox: bool = True
     ) -> pd.DataFrame:
         """
-        获取历史数据
+        获取历史数据 - QuantBox 增强版
 
         Args:
             symbol: 期货合约代码
@@ -82,41 +130,156 @@ class HistoryDataManager:
             start_date: 开始日期
             end_date: 结束日期
             days: 获取天数
+            prefer_quantbox: 优先使用 QuantBox（默认 True）
 
         Returns:
             历史数据DataFrame
         """
+        # 解析日期参数
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d") if start_date else datetime.now() - timedelta(days=days)
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d") if end_date else datetime.now()
+
         # 先从缓存获取
-        cache_key = f"{symbol}_{exchange}_{interval}"
+        cache_key = f"{symbol}_{exchange}_{interval}_{start_date}_{end_date}"
         cached_data = self._get_cached_data(cache_key)
         if cached_data is not None:
             logger.debug(f"从缓存获取历史数据: {cache_key}")
             return cached_data
 
-        # 从数据库获取
-        for db_name, connection in self.connections.items():
-            try:
-                if connection.is_connected:
-                    logger.debug(f"尝试从{db_name}获取历史数据")
-                    df = await connection.get_kline_data(
-                        symbol, exchange, interval, start_date, end_date
-                    )
-                    if not df.empty:
-                        logger.info(f"从{db_name}获取历史数据成功: {len(df)}条记录")
-                        self._cache_data(cache_key, df)
-                        return df
-            except Exception as e:
-                logger.warning(f"{db_name}获取历史数据失败: {e}")
+        # 选择数据源策略
+        if prefer_quantbox and self.enable_quantbox:
+            return await self._get_from_quantbox(
+                symbol, exchange, interval, start_dt, end_dt, cache_key
+            )
+        else:
+            return await self._get_from_legacy_system(
+                symbol, exchange, interval, start_date, end_date, days, cache_key
+            )
 
-        # 最后从外部数据源获取
-        logger.info("从外部数据源获取历史数据")
-        df = await self._get_external_data(symbol, exchange, interval, days)
-        if not df.empty:
-            # 保存到数据库
-            await self._save_to_databases(df, symbol, exchange, interval)
+    async def _get_from_quantbox(
+        self,
+        symbol: str,
+        exchange: str,
+        interval: str,
+        start_dt: datetime,
+        end_dt: datetime,
+        cache_key: str
+    ) -> pd.DataFrame:
+        """从 QuantBox 获取数据"""
+        try:
+            logger.info(f"使用 QuantBox 获取历史数据: {symbol}.{exchange} {interval}")
+
+            # 使用数据桥接器获取数据
+            data_points = await self.data_bridge.get_kline_data(
+                symbol=symbol,
+                exchange=exchange,
+                interval=interval,
+                start_time=start_dt,
+                end_time=end_dt
+            )
+
+            if not data_points:
+                logger.warning(f"QuantBox 未获取到数据，回退到传统系统")
+                return await self._get_from_legacy_system(
+                    symbol, exchange, interval,
+                    start_dt.strftime("%Y-%m-%d"),
+                    end_dt.strftime("%Y-%m-%d"),
+                    (end_dt - start_dt).days,
+                    cache_key
+                )
+
+            # 转换为 DataFrame
+            df = self._data_points_to_dataframe(data_points)
+
+            # 缓存数据
             self._cache_data(cache_key, df)
 
-        return df
+            # 双写机制：同时保存到传统数据库
+            if self.enable_dual_write:
+                await self._save_to_databases(df, symbol, exchange, interval)
+
+            logger.info(f"✅ QuantBox 获取历史数据成功: {len(df)}条记录")
+            return df
+
+        except Exception as e:
+            logger.error(f"❌ QuantBox 获取数据失败: {e}")
+            # 回退到传统系统
+            return await self._get_from_legacy_system(
+                symbol, exchange, interval,
+                start_dt.strftime("%Y-%m-%d"),
+                end_dt.strftime("%Y-%m-%d"),
+                (end_dt - start_dt).days,
+                cache_key
+            )
+
+    async def _get_from_legacy_system(
+        self,
+        symbol: str,
+        exchange: str,
+        interval: str,
+        start_date: str,
+        end_date: str,
+        days: int,
+        cache_key: str
+    ) -> pd.DataFrame:
+        """从传统系统获取数据"""
+        try:
+            logger.info(f"使用传统系统获取历史数据: {symbol}.{exchange} {interval}")
+
+            # 从数据库获取
+            for db_name, connection in self.connections.items():
+                try:
+                    if connection.is_connected:
+                        logger.debug(f"尝试从{db_name}获取历史数据")
+                        df = await connection.get_kline_data(
+                            symbol, exchange, interval, start_date, end_date
+                        )
+                        if not df.empty:
+                            logger.info(f"从{db_name}获取历史数据成功: {len(df)}条记录")
+                            self._cache_data(cache_key, df)
+                            return df
+                except Exception as e:
+                    logger.warning(f"{db_name}获取历史数据失败: {e}")
+
+            # 最后从外部数据源获取
+            logger.info("从外部数据源获取历史数据")
+            df = await self._get_external_data(symbol, exchange, interval, days)
+            if not df.empty:
+                # 保存到数据库
+                await self._save_to_databases(df, symbol, exchange, interval)
+                self._cache_data(cache_key, df)
+
+            return df
+
+        except Exception as e:
+            logger.error(f"传统系统获取数据失败: {e}")
+            return pd.DataFrame()
+
+    def _data_points_to_dataframe(self, data_points: List) -> pd.DataFrame:
+        """将数据点列表转换为 DataFrame"""
+        if not data_points:
+            return pd.DataFrame()
+
+        try:
+            data = []
+            for point in data_points:
+                data.append({
+                    'datetime': point.timestamp,
+                    'open': point.open,
+                    'high': point.high,
+                    'low': point.low,
+                    'close': point.close,
+                    'volume': point.volume,
+                    'open_interest': point.open_interest
+                })
+
+            df = pd.DataFrame(data)
+            df['datetime'] = pd.to_datetime(df['datetime'])
+            return df.sort_values('datetime').reset_index(drop=True)
+
+        except Exception as e:
+            logger.error(f"数据点转换为 DataFrame 失败: {e}")
+            return pd.DataFrame()
 
     async def _get_external_data(
         self, symbol: str, exchange: str, interval: str, days: int = 30
@@ -217,13 +380,194 @@ class HistoryDataManager:
         self.data_cache[key] = (df, datetime.now())
 
     def get_cache_info(self) -> Dict[str, Any]:
-        """获取缓存信息"""
-        return {
+        """获取缓存信息 - 增强版"""
+        cache_info = {
             "cache_size": len(self.data_cache),
             "max_cache_size": self.cache_size,
             "cache_ttl": self.cache_ttl,
             "keys": list(self.data_cache.keys()),
         }
+
+        # 添加 QuantBox 缓存信息
+        if self.enable_quantbox:
+            cache_info.update({
+                "quantbox_enabled": True,
+                "quantbox_cache": self.data_bridge.get_cache_status() if hasattr(self, 'data_bridge') else {},
+                "adapter_info": self.quantbox_adapter.get_adapter_info() if hasattr(self, 'quantbox_adapter') else {}
+            })
+        else:
+            cache_info["quantbox_enabled"] = False
+
+        return cache_info
+
+    # ==================== 新增功能方法 ====================
+
+    async def get_contract_info(self, symbol: str, exchange: str) -> Dict[str, Any]:
+        """
+        获取合约信息
+
+        Args:
+            symbol: 合约代码
+            exchange: 交易所
+
+        Returns:
+            合约信息字典
+        """
+        if self.enable_quantbox:
+            try:
+                return await self.data_bridge.get_contract_info(symbol, exchange)
+            except Exception as e:
+                logger.error(f"获取合约信息失败: {e}")
+                return {}
+        return {}
+
+    async def is_trading_day(self, date: datetime, exchange: str = "SHFE") -> bool:
+        """
+        检查是否为交易日
+
+        Args:
+            date: 日期
+            exchange: 交易所
+
+        Returns:
+            是否为交易日
+        """
+        if self.enable_quantbox:
+            try:
+                return await self.data_bridge.is_trading_day(date, exchange)
+            except Exception as e:
+                logger.error(f"检查交易日失败: {e}")
+                return False
+        return True  # 默认返回 True
+
+    async def batch_get_historical_data(
+        self,
+        requests: List[Dict[str, Any]],
+        prefer_quantbox: bool = True
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        批量获取历史数据
+
+        Args:
+            requests: 请求列表，每个请求包含symbol、exchange、interval等参数
+            prefer_quantbox: 优先使用 QuantBox
+
+        Returns:
+            批量数据结果
+        """
+        results = {}
+
+        if self.enable_quantbox and prefer_quantbox:
+            try:
+                # 使用 QuantBox 批量获取
+                batch_requests = []
+                request_keys = []
+
+                for req in requests:
+                    batch_requests.append({
+                        'symbol': req.get('symbol'),
+                        'exchange': req.get('exchange'),
+                        'interval': req.get('interval'),
+                        'start_time': datetime.strptime(req['start_date'], "%Y-%m-%d") if req.get('start_date') else None,
+                        'end_time': datetime.strptime(req['end_date'], "%Y-%m-%d") if req.get('end_date') else None,
+                        'limit': req.get('limit')
+                    })
+                    request_keys.append(f"{req.get('symbol')}.{req.get('exchange')}.{req.get('interval')}")
+
+                data_points_dict = await self.data_bridge.batch_get_kline_data(batch_requests)
+
+                # 转换为 DataFrame
+                for key, data_points in data_points_dict.items():
+                    results[key] = self._data_points_to_dataframe(data_points)
+
+            except Exception as e:
+                logger.error(f"批量获取数据失败，回退到单独获取: {e}")
+
+        # 回退到单独获取
+        for req in requests:
+            key = f"{req.get('symbol')}.{req.get('exchange')}.{req.get('interval')}"
+            if key not in results:
+                df = await self.get_historical_data(
+                    symbol=req.get('symbol'),
+                    exchange=req.get('exchange'),
+                    interval=req.get('interval'),
+                    start_date=req.get('start_date'),
+                    end_date=req.get('end_date'),
+                    prefer_quantbox=prefer_quantbox
+                )
+                results[key] = df
+
+        return results
+
+    async def test_quantbox_connection(self) -> bool:
+        """
+        测试 QuantBox 连接
+
+        Returns:
+            是否连接成功
+        """
+        if not self.enable_quantbox:
+            return False
+
+        try:
+            return await self.quantbox_adapter.test_connection()
+        except Exception as e:
+            logger.error(f"测试 QuantBox 连接失败: {e}")
+            return False
+
+    def get_system_status(self) -> Dict[str, Any]:
+        """
+        获取系统状态
+
+        Returns:
+            系统状态信息
+        """
+        status = {
+            "history_data_manager": "正常",
+            "cache_system": "正常" if self.data_cache else "空",
+            "database_connections": []
+        }
+
+        # 检查数据库连接
+        if hasattr(self, 'connections'):
+            for db_name, connection in self.connections.items():
+                try:
+                    is_connected = connection.is_connected
+                    status["database_connections"].append({
+                        "name": db_name,
+                        "status": "已连接" if is_connected else "未连接"
+                    })
+                except:
+                    status["database_connections"].append({
+                        "name": db_name,
+                        "status": "错误"
+                    })
+
+        # 添加 QuantBox 状态
+        if self.enable_quantbox:
+            status.update({
+                "quantbox_integration": "已启用",
+                "quantbox_adapter": "正常",
+                "data_bridge": "正常"
+            })
+        else:
+            status.update({
+                "quantbox_integration": "未启用",
+                "reason": "QuantBox 不可用或被禁用"
+            })
+
+        return status
+
+    def clear_all_caches(self):
+        """清空所有缓存"""
+        # 清空本地缓存
+        self.data_cache.clear()
+        logger.info("本地缓存已清空")
+
+        # 清空 QuantBox 缓存
+        if self.enable_quantbox and hasattr(self, 'data_bridge'):
+            self.data_bridge.clear_cache()
+            logger.info("QuantBox 缓存已清空")
 
     def clear_cache(self):
         """清空缓存"""
