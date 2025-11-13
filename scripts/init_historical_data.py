@@ -68,8 +68,7 @@ class HistoricalDataInitializer:
     async def _ensure_db_manager(self) -> None:
         """确保数据库管理器已初始化"""
         if self.db_manager is None:
-            db_config = get_database_config()
-            self.db_manager = await get_database_manager(db_config)
+            self.db_manager = await get_database_manager()
             logger.info("✅ 数据库连接已建立")
 
     async def check_database_status(self) -> Dict[str, int]:

@@ -9,10 +9,9 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
-from vnpy.app.cta_strategy import CtaTemplate, StopOrder, TickData, BarData, OrderData, TradeData
+from vnpy_ctastrategy import CtaTemplate, StopOrder, BarGenerator, ArrayManager
+from vnpy.trader.object import TickData, BarData, OrderData, TradeData, PositionData, AccountData, ContractData
 from vnpy.trader.constant import Direction, Status, Offset
-from vnpy.trader.object import PositionData, AccountData, ContractData
-from vnpy.trader.utility import BarGenerator, ArrayManager
 
 from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
 

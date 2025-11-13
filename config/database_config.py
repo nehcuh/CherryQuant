@@ -1,25 +1,31 @@
 """
 CherryQuant 数据库配置
+⚠️  迁移至 MongoDB - PostgreSQL 配置已移除
 """
 
 import os
 from typing import Dict, Any
-from cherryquant.adapters.data_storage.database_manager import DatabaseConfig
 from config.settings.base import CONFIG
 
-def get_database_config() -> DatabaseConfig:
-    """获取数据库配置（使用全局 CONFIG 作为单一来源）"""
-    return DatabaseConfig(
-        postgres_host=CONFIG.database.postgres_host,
-        postgres_port=CONFIG.database.postgres_port,
-        postgres_db=CONFIG.database.postgres_db,
-        postgres_user=CONFIG.database.postgres_user,
-        postgres_password=CONFIG.database.postgres_password,
-        redis_host=CONFIG.database.redis_host,
-        redis_port=CONFIG.database.redis_port,
-        redis_db=CONFIG.database.redis_db,
-        cache_ttl=CONFIG.database.cache_ttl,
-    )
+def get_database_config() -> Dict[str, Any]:
+    """
+    获取数据库配置（使用全局 CONFIG 作为单一来源）
+
+    Returns:
+        包含 MongoDB 和 Redis 配置的字典
+    """
+    return {
+        # MongoDB 配置
+        "mongodb_uri": CONFIG.database.mongodb_uri,
+        "mongodb_database": CONFIG.database.mongodb_database,
+        "mongodb_min_pool_size": CONFIG.database.mongodb_min_pool_size,
+        "mongodb_max_pool_size": CONFIG.database.mongodb_max_pool_size,
+        # Redis 配置
+        "redis_host": CONFIG.database.redis_host,
+        "redis_port": CONFIG.database.redis_port,
+        "redis_db": CONFIG.database.redis_db,
+        "cache_ttl": CONFIG.database.cache_ttl,
+    }
 
 # 数据库连接配置（向后兼容，基于 CONFIG 构建）
 DATABASE_CONFIG = get_database_config()
@@ -45,9 +51,9 @@ DATA_RETENTION_POLICY = {
     }
 }
 
-# 数据源配置
+# 数据源配置（已迁移至 QuantBox）
 DATA_SOURCES = {
-    "primary": "akshare",
+    "primary": "quantbox",  # QuantBox (Tushare) - 替代 AKShare
     "fallback": "simnow",
     "update_interval": {
         "1m": 60,     # 1分钟数据每60秒更新

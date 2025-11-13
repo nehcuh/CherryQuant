@@ -14,9 +14,9 @@ from vnpy.event import Event, EventEngine
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.object import (
     TickData, BarData, OrderData, TradeData, PositionData,
-    AccountData, ContractData, OrderRequest, CancelRequest
+    AccountData, ContractData, OrderRequest, CancelRequest, SubscribeRequest
 )
-from vnpy.trader.constant import Direction, Status, OrderType, Offset
+from vnpy.trader.constant import Direction, Status, OrderType, Offset, Exchange
 from vnpy.trader.gateway import BaseGateway
 
 try:
@@ -178,7 +178,7 @@ class VNPyGateway:
 
     def _register_event_handlers(self) -> None:
         """注册事件处理器"""
-        from vnpy.event import (
+        from vnpy.trader.event import (
             EVENT_TICK, EVENT_TRADE, EVENT_ORDER, EVENT_POSITION,
             EVENT_ACCOUNT, EVENT_CONTRACT, EVENT_LOG
         )

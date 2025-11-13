@@ -65,44 +65,44 @@ class CherryQuantSystem:
             return
 
         try:
-            # 检查数据库中的数据量
-            async with self.db_manager.postgres_pool.acquire() as conn:
-                count = await conn.fetchval("SELECT COUNT(*) FROM market_data")
+            # 检查数据库中的数据量 (MongoDB)
+            collection = self.db_manager.mongodb_manager.get_collection("market_data")
+            count = await collection.count_documents({})
 
-                if count == 0:
-                    logger.warning("⚠️  数据库中没有历史数据")
-                    print("\n" + "=" * 70)
-                    print("⚠️  检测到数据库为空")
-                    print("=" * 70)
-                    print("\n建议下载历史数据以获得更好的AI决策效果")
-                    print("\n可选方案:")
-                    print("  1. 现在下载 (推荐，需要5-10分钟)")
-                    print("  2. 稍后手动下载")
-                    print("  3. 跳过 (系统将使用实时数据)")
-                    print("\n" + "=" * 70)
+            if count == 0:
+                logger.warning("⚠️  数据库中没有历史数据")
+                print("\n" + "=" * 70)
+                print("⚠️  检测到数据库为空")
+                print("=" * 70)
+                print("\n建议下载历史数据以获得更好的AI决策效果")
+                print("\n可选方案:")
+                print("  1. 现在下载 (推荐，需要5-10分钟)")
+                print("  2. 稍后手动下载")
+                print("  3. 跳过 (系统将使用实时数据)")
+                print("\n" + "=" * 70)
 
-                    # 询问用户
-                    try:
-                        choice = input("\n请选择 (1/2/3, 默认3): ").strip() or "3"
+                # 询问用户
+                try:
+                    choice = input("\n请选择 (1/2/3, 默认3): ").strip() or "3"
 
-                        if choice == "1":
-                            # 执行数据初始化
-                            logger.info("开始下载历史数据...")
-                            await self._run_data_initialization()
-                        elif choice == "2":
-                            print("\n📝 稍后可运行以下命令初始化数据:")
-                            print("   uv run python scripts/init_historical_data.py")
-                            print("")
-                        else:
-                            logger.info("跳过历史数据下载，将使用实时数据")
+                    if choice == "1":
+                        # 执行数据初始化
+                        logger.info("开始下载历史数据...")
+                        await self._run_data_initialization()
+                    elif choice == "2":
+                        print("\n📝 稍后可运行以下命令初始化数据:")
+                        print("   uv run python scripts/init_historical_data.py")
+                        print("")
+                    else:
+                        logger.info("跳过历史数据下载，将使用实时数据")
 
-                    except (EOFError, KeyboardInterrupt):
-                        logger.info("\n跳过历史数据下载")
+                except (EOFError, KeyboardInterrupt):
+                    logger.info("\n跳过历史数据下载")
 
-                elif count < 1000:
-                    logger.info(f"ℹ️  数据库中有 {count} 条历史数据（数据较少）")
-                else:
-                    logger.info(f"✅ 数据库中有 {count:,} 条历史数据")
+            elif count < 1000:
+                logger.info(f"ℹ️  数据库中有 {count} 条历史数据（数据较少）")
+            else:
+                logger.info(f"✅ 数据库中有 {count:,} 条历史数据")
 
         except Exception as e:
             logger.warning(f"检查历史数据失败: {e}")
@@ -142,9 +142,8 @@ class CherryQuantSystem:
         try:
             logger.info("🚀 初始化CherryQuant完整交易系统...")
 
-            # 1. 初始化数据库管理器
-            db_config = get_database_config()
-            self.db_manager = await get_database_manager(db_config)
+            # 1. 初始化数据库管理器（自动从配置读取）
+            self.db_manager = await get_database_manager()
             logger.info("✅ 数据库管理器初始化完成")
 
             # 1.1 检查数据库是否有历史数据

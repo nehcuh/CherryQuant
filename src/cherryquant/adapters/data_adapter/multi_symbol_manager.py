@@ -101,8 +101,7 @@ class MultiSymbolDataManager:
 
     async def _ensure_db(self) -> DatabaseManager:
         if self.db_manager is None:
-            cfg = get_database_config()
-            self.db_manager = await get_database_manager(cfg)
+            self.db_manager = await get_database_manager()
         return self.db_manager
 
     async def get_all_market_data(self, exclude_exchanges: List[str] = None) -> Dict[str, Any]:

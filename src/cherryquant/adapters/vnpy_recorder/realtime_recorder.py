@@ -1,6 +1,6 @@
 """
 vn.py CTP 实时记录器
-从 VNPyGateway 订阅 tick，聚合为 5m/10m/30m/60m K 线，写入 TimescaleDB
+从 VNPyGateway 订阅 tick，聚合为 5m/10m/30m/60m K 线，写入 MongoDB
 """
 
 import asyncio
@@ -9,12 +9,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Callable, List
 
+# 使用 MongoDB 版本的 DatabaseManager
 from cherryquant.adapters.data_storage.database_manager import (
     get_database_manager,
     DatabaseManager,
 )
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
-from config.database_config import get_database_config
 from src.trading.vnpy_gateway import VNPyGateway
 
 logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ class _Aggregator:
 
 
 class RealtimeRecorder:
-    """基于 vn.py 的实时记录器：tick→多周期K线→TimescaleDB"""
+    """基于 vn.py 的实时记录器：tick→多周期K线→MongoDB"""
 
     def __init__(self, gateway: VNPyGateway):
         self.gateway = gateway
@@ -122,8 +122,8 @@ class RealtimeRecorder:
 
     async def initialize(self):
         if self.db is None:
-            cfg = get_database_config()
-            self.db = await get_database_manager(cfg)
+            # 使用新的 MongoDB DatabaseManager（自动从配置读取）
+            self.db = await get_database_manager()
 
     def _symbol_key(self, vt_symbol: str) -> (str, str):
         # 约定 vt_symbol 形如 rb2501.SHFE

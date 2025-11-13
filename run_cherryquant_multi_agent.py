@@ -47,9 +47,8 @@ class MultiAgentTradingSystem:
         try:
             logger.info("🚀 初始化CherryQuant多代理交易系统...")
 
-            # 1. 初始化数据库管理器
-            db_config = get_database_config()
-            self.db_manager = await get_database_manager(db_config)
+            # 1. 初始化数据库管理器（自动从配置读取）
+            self.db_manager = await get_database_manager()
             logger.info("✅ 数据库管理器初始化完成")
 
             # 2. 初始化市场数据管理器

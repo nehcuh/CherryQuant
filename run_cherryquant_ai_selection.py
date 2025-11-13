@@ -241,7 +241,7 @@ async def ai_selection_demo():
                 # 展示AI分析结果
                 # 持久化AI选择的交易到数据库
                 try:
-                    db_manager = await get_database_manager(DATABASE_CONFIG)
+                    db_manager = await get_database_manager()
                     selected_trade = decision.get("selected_trade", {})
                     if selected_trade:
                         ai_db_record = {

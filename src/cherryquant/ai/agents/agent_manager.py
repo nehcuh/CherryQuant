@@ -13,18 +13,31 @@ import os
 
 from .strategy_agent import StrategyAgent, StrategyConfig, AgentStatus
 from cherryquant.adapters.data_storage.database_manager import DatabaseManager
+from config.settings.base import CONFIG
 
 logger = logging.getLogger(__name__)
 
 @dataclass
 class PortfolioRiskConfig:
     """组合风险配置"""
-    max_total_capital_usage: float = 0.8  # 最大总资金使用率
-    max_correlation_threshold: float = 0.7  # 最大相关性阈值
-    max_sector_concentration: float = 0.4  # 最大单一板块集中度
-    portfolio_stop_loss: float = 0.1  # 组合止损比例
-    daily_loss_limit: float = 0.05  # 每日亏损限制
-    max_leverage_total: float = 3.0  # 总杠杆限制
+    max_total_capital_usage: float
+    max_correlation_threshold: float
+    max_sector_concentration: float
+    portfolio_stop_loss: float
+    daily_loss_limit: float
+    max_leverage_total: float
+
+    @classmethod
+    def from_config(cls) -> 'PortfolioRiskConfig':
+        """从全局 CONFIG 创建实例"""
+        return cls(
+            max_total_capital_usage=CONFIG.risk.max_total_capital_usage,
+            max_correlation_threshold=CONFIG.risk.max_correlation_threshold,
+            max_sector_concentration=CONFIG.risk.max_sector_concentration,
+            portfolio_stop_loss=CONFIG.risk.portfolio_stop_loss,
+            daily_loss_limit=CONFIG.risk.daily_loss_limit,
+            max_leverage_total=CONFIG.risk.max_leverage_total,
+        )
 
 class AgentManager:
     """多策略代理管理器"""
@@ -40,11 +53,16 @@ class AgentManager:
         Args:
             db_manager: 数据库管理器
             market_data_manager: 市场数据管理器
-            risk_config: 组合风险配置
+            risk_config: 组合风险配置（如不提供，从全局 CONFIG 读取）
         """
         self.db_manager = db_manager
         self.market_data_manager = market_data_manager
-        self.risk_config = risk_config or PortfolioRiskConfig()
+
+        # 从配置加载风险参数
+        self.risk_config = risk_config or PortfolioRiskConfig.from_config()
+
+        # 从配置文件加载板块映射
+        self.sector_mapping = self._load_sector_mapping()
 
         # 代理管理
         self.agents: Dict[str, StrategyAgent] = {}
@@ -337,18 +355,86 @@ class AgentManager:
         max_sector_positions = max(sector_positions.values()) if sector_positions else 0
         return max_sector_positions / total_positions
 
-    def _get_symbol_sector(self, symbol: str) -> str:
-        """获取品种所属板块"""
-        # 简化的板块映射
-        sector_mapping = {
-            "rb": "黑色金属", "i": "黑色金属", "j": "黑色金属", "jm": "黑色金属",
-            "cu": "有色金属", "al": "有色金属", "zn": "有色金属", "ni": "有色金属",
+    def _load_sector_mapping(self, config_file: str = "config/strategies.json") -> Dict[str, str]:
+        """从配置文件加载板块映射
+
+        Args:
+            config_file: 策略配置文件路径
+
+        Returns:
+            板块映射字典
+        """
+        try:
+            if not os.path.exists(config_file):
+                logger.warning(f"策略配置文件不存在: {config_file}，使用默认板块映射")
+                return self._get_default_sector_mapping()
+
+            with open(config_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            sector_mapping = data.get("sector_mapping", {})
+
+            if not sector_mapping:
+                logger.warning("配置文件中未找到 sector_mapping，使用默认板块映射")
+                return self._get_default_sector_mapping()
+
+            logger.info(f"成功加载 {len(sector_mapping)} 个品种的板块映射")
+            return sector_mapping
+
+        except Exception as e:
+            logger.error(f"加载板块映射失败: {e}，使用默认板块映射")
+            return self._get_default_sector_mapping()
+
+    def _get_default_sector_mapping(self) -> Dict[str, str]:
+        """返回默认板块映射（作为备份）"""
+        return {
+            "rb": "黑色金属", "hc": "黑色金属", "i": "黑色金属", "j": "黑色金属", "jm": "黑色金属",
+            "cu": "有色金属", "al": "有色金属", "zn": "有色金属", "pb": "有色金属", "ni": "有色金属", "sn": "有色金属",
             "au": "贵金属", "ag": "贵金属",
-            "a": "农产品", "m": "农产品", "c": "农产品", "y": "农产品",
+            "a": "农产品", "m": "农产品", "c": "农产品", "y": "农产品", "p": "农产品",
+            "pp": "化工", "l": "化工", "v": "化工", "ta": "化工", "ma": "化工",
+            "IF": "金融", "IC": "金融", "IH": "金融", "T": "金融", "TF": "金融",
         }
 
-        commodity = symbol[:2].lower()
-        return sector_mapping.get(commodity, "其他")
+    def _get_symbol_sector(self, symbol: str) -> str:
+        """获取品种所属板块
+
+        Args:
+            symbol: 合约代码（如 rb2501, a2501, IF2501）
+
+        Returns:
+            板块名称
+        """
+        if not symbol or len(symbol) < 1:
+            return "其他"
+
+        # 先尝试双字符匹配（如 rb, cu, IF）
+        if len(symbol) >= 2:
+            # 小写匹配
+            commodity_2char = symbol[:2].lower()
+            sector = self.sector_mapping.get(commodity_2char)
+            if sector:
+                return sector
+
+            # 大写匹配（金融期货如 IF, IC, IH）
+            commodity_2char_upper = symbol[:2].upper()
+            sector = self.sector_mapping.get(commodity_2char_upper)
+            if sector:
+                return sector
+
+        # 再尝试单字符匹配（如 a, m, c, y, p）
+        commodity_1char = symbol[0].lower()
+        sector = self.sector_mapping.get(commodity_1char)
+        if sector:
+            return sector
+
+        commodity_1char_upper = symbol[0].upper()
+        sector = self.sector_mapping.get(commodity_1char_upper)
+        if sector:
+            return sector
+
+        # 未找到，返回"其他"
+        return "其他"
 
     async def _handle_high_capital_usage(self, usage: float) -> None:
         """处理高资金使用率"""

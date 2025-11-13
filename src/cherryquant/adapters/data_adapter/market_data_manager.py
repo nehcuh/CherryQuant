@@ -1,7 +1,8 @@
 """
 市场数据管理器
-支持多种数据源：AKShare、Simnow、vn.py内置数据等
+支持多种数据源：Tushare (via QuantBox)、Simnow、vn.py内置数据等
 使用协议定义标准接口
+注意：AKShare 已移除，使用 QuantBox 替代
 """
 
 import logging
@@ -12,7 +13,7 @@ import os
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
-import akshare as ak
+# import akshare as ak  # 已移除，使用 QuantBox 替代
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -56,132 +57,16 @@ class DataSourceStatus:
     response_time_ms: Optional[float] = None
 
 
-class AKShareDataSource:
-    """AKShare数据源实现"""
+# ============================================================================
+# AKShareDataSource 已移除
+# 原因：已迁移到 QuantBox，提供更高性能和更完整的数据支持
+# 如需历史数据，请使用 HistoryDataManager (基于 QuantBox)
+# 如需实时数据，请使用 VNPy CTP 连接
+# ============================================================================
 
-    def __init__(self):
-        self._name = "AKShare"
-        self._description = "公开金融数据接口，无需账号"
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def description(self) -> str:
-        return self._description
-
-    async def get_realtime_price(self, symbol: str) -> Optional[float]:
-        """获取实时价格"""
-        try:
-            # 转换期货代码
-            ak_symbol = self._convert_symbol(symbol)
-
-            # 获取实时行情
-            df = ak.futures_main_sina(symbol=ak_symbol)
-            if not df.empty:
-                # 处理中文列名 - 收盘价列
-                if "收盘价" in df.columns:
-                    return float(df.iloc[-1]["收盘价"])
-                elif "close" in df.columns:
-                    return float(df.iloc[-1]["close"])
-                else:
-                    logger.error(f"无法找到价格列，可用列: {df.columns.tolist()}")
-                    return None
-            return None
-        except Exception as e:
-            logger.error(f"AKShare获取实时价格失败: {e}")
-            return None
-
-    async def get_kline_data(
-        self, symbol: str, period: str = "5m", count: int = 100
-    ) -> Optional[pd.DataFrame]:
-        """获取K线数据"""
-        try:
-            ak_symbol = self._convert_symbol(symbol)
-
-            # 获取期货数据
-            df = ak.futures_main_sina(symbol=ak_symbol)
-            if df.empty:
-                return None
-
-            # 数据预处理 - 处理中文列名
-            # 列名映射：日期->datetime, 开盘价->open, 最高价->high, 最低价->low, 收盘价->close, 成交量->volume
-            column_mapping = {
-                "日期": "datetime",
-                "开盘价": "open",
-                "最高价": "high",
-                "最低价": "low",
-                "收盘价": "close",
-                "成交量": "volume",
-                "持仓量": "open_interest",
-                "动态结算价": "settlement",
-            }
-
-            # 重命名列
-            df = df.rename(columns=column_mapping)
-
-            # 确保必需的列存在
-            required_columns = ["datetime", "open", "high", "low", "close", "volume"]
-            missing_columns = [col for col in required_columns if col not in df.columns]
-            if missing_columns:
-                logger.error(f"AKShare数据缺少必需列: {missing_columns}")
-                return None
-
-            # 转换日期列并排序
-            df["datetime"] = pd.to_datetime(df["datetime"])
-            df = df.sort_values("datetime").tail(count)
-
-            # 只返回需要的列
-            return df[required_columns]
-        except Exception as e:
-            logger.error(f"AKShare获取K线数据失败: {e}")
-            return None
-
-    def is_available(self) -> bool:
-        """检查AKShare是否可用"""
-        try:
-            # 简单测试
-            df = ak.futures_main_sina(symbol="RB0")
-            return not df.empty
-        except Exception as e:
-            logger.debug(f"AKShare可用性检查失败: {e}")
-            return False
-
-    def _convert_symbol(self, symbol: str) -> str:
-        """转换期货代码为AKShare格式"""
-        symbol_map = {
-            "rb": "RB0",
-            "i": "I0",
-            "j": "J0",
-            "jm": "JM0",
-            "cu": "CU0",
-            "al": "AL0",
-            "zn": "ZN0",
-            "au": "AU0",
-            "ag": "AG0",
-        }
-
-        if not symbol:
-            return symbol
-
-        # 先检查是否已经是正确的格式（如RB0, I0等）
-        if len(symbol) >= 2 and symbol[-1].isdigit():
-            return symbol.upper()
-
-        # 对于品种代码，先检查单字符品种，再检查双字符品种
-        symbol_lower = symbol.lower()
-
-        # 检查单字符品种
-        if symbol_lower in symbol_map:
-            return symbol_map[symbol_lower]
-
-        # 检查双字符品种
-        if len(symbol) >= 2 and symbol_lower[:2] in symbol_map:
-            return symbol_map[symbol_lower[:2]]
-
-        # 默认返回大写形式
-        return symbol.upper()
+# class AKShareDataSource:
+#     """AKShare数据源实现 - 已废弃，使用 QuantBox 替代"""
+#     pass
 
 
 class TushareDataSource:
@@ -586,31 +471,31 @@ def create_default_data_manager(db_manager=None) -> MarketDataManager:
     logger.info(f"数据管理器模式: {data_mode.upper()}")
 
     if data_mode == "dev":
-        # Dev模式：使用AKShare作为主数据源（准实时）
-        akshare_source = AKShareDataSource()
-        if akshare_source.is_available():
-            manager.add_data_source(akshare_source, is_primary=True)
-            logger.info("✅ Dev模式：主数据源 AKShare（准实时）")
-        else:
-            logger.warning("⚠️ AKShare 不可用")
+        # Dev模式：使用 Tushare (via QuantBox) 作为主数据源
+        # AKShare 已移除 - 使用 HistoryDataManager (QuantBox) 替代
+        logger.info("✅ Dev模式：使用 QuantBox 提供的 Tushare 数据")
 
-        # Tushare作为备用（用于历史数据）
+        # Tushare作为主数据源（通过 QuantBox）
+        tushare_token = os.getenv('TUSHARE_TOKEN')
+        if tushare_token and tushare_token != 'your_tushare_pro_token_here':
+            ts_source = TushareDataSource(token=tushare_token)
+            if ts_source.is_available():
+                manager.add_data_source(ts_source, is_primary=True)
+                logger.info("✅ Dev模式：主数据源 Tushare（通过 QuantBox）")
+        else:
+            logger.warning("⚠️ Tushare Token 未配置，部分功能受限")
+
+    elif data_mode == "live":
+        # Live模式：主要从数据库读取RealtimeRecorder写入的实时数据
+        logger.info("✅ Live模式：主数据源 MongoDB（CTP实时 tick聚合）")
+
+        # Tushare 作为备用（历史数据）
         tushare_token = os.getenv('TUSHARE_TOKEN')
         if tushare_token and tushare_token != 'your_tushare_pro_token_here':
             ts_source = TushareDataSource(token=tushare_token)
             if ts_source.is_available():
                 manager.add_data_source(ts_source, is_primary=False)
-                logger.info("✅ Dev模式：备用数据源 Tushare（历史）")
-
-    elif data_mode == "live":
-        # Live模式：主要从数据库读取RealtimeRecorder写入的实时数据
-        logger.info("✅ Live模式：主数据源 数据库（CTP实时 tick聚合）")
-
-        # AKShare作为备用
-        akshare_source = AKShareDataSource()
-        if akshare_source.is_available():
-            manager.add_data_source(akshare_source, is_primary=False)
-            logger.info("✅ Live模式：备用数据源 AKShare")
+                logger.info("✅ Live模式：备用数据源 Tushare")
 
         # Tushare作为备用
         tushare_token = os.getenv('TUSHARE_TOKEN')
@@ -632,18 +517,16 @@ def create_simnow_data_manager(userid: str, password: str) -> MarketDataManager:
     simnow_source = SimNowDataSource(userid, password)
     manager.add_data_source(simnow_source, is_primary=True)
 
-    # AKShare作为备用数据源
-    akshare_source = AKShareDataSource()
-    manager.add_data_source(akshare_source, is_primary=False)
-
-    # 如有Tushare Token，则也加入备用
+    # AKShare 已移除 - 使用 Tushare (via QuantBox) 作为备用
+    # 如有Tushare Token，则加入备用数据源
     tushare_token = os.getenv('TUSHARE_TOKEN')
     if tushare_token and tushare_token != 'your_tushare_pro_token_here':
         ts_source = TushareDataSource(token=tushare_token)
         if ts_source.is_available():
             manager.add_data_source(ts_source, is_primary=False)
+            logger.info("✅ 添加备用数据源: Tushare")
 
-    logger.info("数据管理器初始化完成，主数据源：SimNow，备用数据源：AKShare/Tushare")
+    logger.info("数据管理器初始化完成，主数据源：SimNow，备用数据源：Tushare (via QuantBox)")
     return manager
 
 

@@ -552,8 +552,7 @@ def main():
         logger.info("🔍 检查系统状态...")
 
         # 1. 初始化数据库（需要在setup_data_sources之前，以便Live模式使用）
-        db_config = get_database_config()
-        db_manager = asyncio.run(get_database_manager(db_config))
+        db_manager = asyncio.run(get_database_manager())
         logger.info("✅ 数据库管理器初始化完成")
 
         # 2. 测试AI连接

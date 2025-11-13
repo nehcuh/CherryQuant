@@ -214,47 +214,10 @@ class FuturesDecisionEngine:
             logger.error(f"获取市场数据时发生错误: {e}")
             return None
 
-    def _convert_symbol_for_akshare(self, symbol: str) -> str:
-        """
-        将期货合约代码转换为akshare格式（保留以兼容旧路径，M2+ 不再调用）
-
-        Args:
-            symbol: 如 'rb2501'
-
-        Returns:
-            akshare格式的代码
-        """
-        # 简单的映射关系，实际可能需要更复杂的逻辑
-        symbol_map = {
-            'rb': 'RB0',    # 螺纹钢
-            'i': 'I0',      # 铁矿石
-            'j': 'J0',      # 焦炭
-            'jm': 'JM0',    # 焦煤
-            'cu': 'CU0',    # 沪铜
-            'al': 'AL0',    # 沪铝
-            'zn': 'ZN0',    # 沪锌
-            'au': 'AU0',    # 沪金
-            'ag': 'AG0',    # 沪银
-        }
-
-        # 提取品种代码 - 优先尝试单字符匹配，然后双字符
-        if not symbol:
-            return symbol.upper()
-
-        # 首先尝试单字符品种代码（如 'i' for 铁矿石）
-        if len(symbol) >= 1:
-            commodity = symbol[0].lower()
-            if commodity in symbol_map:
-                return symbol_map[commodity]
-
-        # 如果单字符不匹配，尝试双字符品种代码（如 'rb' for 螺纹钢）
-        if len(symbol) >= 2:
-            commodity = symbol[:2].lower()
-            if commodity in symbol_map:
-                return symbol_map[commodity]
-
-        # 默认返回大写版本
-        return symbol.upper()
+    # ============================================================================
+    # _convert_symbol_for_akshare 已废弃
+    # 原因：AKShare 已移除，使用 QuantBox 替代
+    # ============================================================================
 
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
         """计算RSI指标"""

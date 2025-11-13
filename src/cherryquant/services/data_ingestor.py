@@ -1,7 +1,13 @@
 # ruff: noqa: E402
 """
 Data Ingestor Service
-Periodically pulls recent futures data (AKShare) and stores OHLCV into TimescaleDB via DatabaseManager.
+⚠️  已废弃 - 此服务依赖 AKShare，已被 QuantBox 替代
+============================================================================
+推荐使用：
+1. HistoryDataManager (基于 QuantBox) - 用于历史数据获取
+2. RealtimeRecorder (基于 VNPy) - 用于实时数据记录
+============================================================================
+此文件保留仅用于参考，不应在生产环境中使用
 """
 
 import asyncio
@@ -10,7 +16,7 @@ from datetime import datetime
 from typing import Dict, List
 
 
-import akshare as ak
+# import akshare as ak  # 已废弃，使用 QuantBox 替代
 
 from cherryquant.adapters.data_storage.database_manager import get_database_manager
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
@@ -68,16 +74,19 @@ def _to_points(df) -> List[MarketDataPoint]:
 
 
 async def ingest_once(db, exchange: str, symbol: str, ak_symbol: str) -> None:
-    try:
-        df = ak.futures_main_sina(symbol=ak_symbol)
-        if df is None or df.empty:
-            return
-        df = df.sort_values("datetime").tail(RECENT_POINTS)
-        points = _to_points(df)
-        await db.store_market_data(symbol, exchange, TimeFrame.FIVE_MIN, points)
-        logger.info(f"Stored {len(points)} bars for {symbol}.{exchange}")
-    except Exception as e:
-        logger.debug(f"Ingest failed for {symbol}.{exchange}: {e}")
+    """已废弃 - AKShare 已移除"""
+    logger.warning("⚠️  ingest_once 已废弃，请使用 HistoryDataManager (QuantBox) 或 RealtimeRecorder (VNPy)")
+    return
+    # try:
+    #     df = ak.futures_main_sina(symbol=ak_symbol)  # AKShare 已移除
+    #     if df is None or df.empty:
+    #         return
+    #     df = df.sort_values("datetime").tail(RECENT_POINTS)
+    #     points = _to_points(df)
+    #     await db.store_market_data(symbol, exchange, TimeFrame.FIVE_MIN, points)
+    #     logger.info(f"Stored {len(points)} bars for {symbol}.{exchange}")
+    # except Exception as e:
+    #     logger.debug(f"Ingest failed for {symbol}.{exchange}: {e}")
 
 
 async def run_loop() -> None:
