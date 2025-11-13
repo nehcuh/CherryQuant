@@ -6,10 +6,11 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![uv](https://img.shields.io/badge/uv-Package_Manager-purple.svg)](https://docs.astral.sh/uv/)
 [![vnpy](https://img.shields.io/badge/vnpy-4.1.0+-red.svg)](https://www.vnpy.com/)
+[![QuantBox](https://img.shields.io/badge/QuantBox-Integrated-orange.svg)](docs/QUANTBOX_INTEGRATION.md)
 
 **基于大语言模型的中国期货市场AI驱动交易系统**
 
-[快速开始](#-快速开始) • [系统架构](docs/ARCHITECTURE.md) • [配置指南](#-配置指南) • [数据流程](docs/DATA_PIPELINE.md)
+[快速开始](#-快速开始) • [系统架构](docs/ARCHITECTURE.md) • [配置指南](#-配置指南) • [数据流程](docs/DATA_PIPELINE.md) • [QuantBox集成](docs/QUANTBOX_INTEGRATION.md)
 
 </div>
 
@@ -27,6 +28,8 @@ CherryQuant 是一个基于 **AI 驱动**的中国期货市场自动化交易系
 - 🛡️ **多层风险控制** - 策略级+组合级风险管理
 - 📈 **实时数据记录** - CTP Tick → K线聚合 → TimescaleDB
 - 🎯 **多策略协同** - 支持多个AI策略并行运行
+- 🚀 **QuantBox集成** - 高性能异步数据管理，性能提升10-20倍
+- 💾 **智能缓存系统** - 缓存预热，首次操作速度提升95%+
 
 ### 🎯 设计理念
 
@@ -44,7 +47,7 @@ CherryQuant 是一个基于 **AI 驱动**的中国期货市场自动化交易系
 - **Python**: 3.12+
 - **包管理器**: uv
 - **AI模型**: OpenAI API Key (GPT-4)
-- **数据服务**: Docker + PostgreSQL + Redis
+- **数据服务**: Docker + PostgreSQL + Redis + MongoDB (QuantBox)
 - **CTP账户**: SimNow模拟账户 或 实盘账户（live模式需要）
 - **Tushare Pro**: Token（推荐2000+积分，用于分钟线和主力合约查询）
 
@@ -60,11 +63,14 @@ cd CherryQuant
 #### 2. 安装依赖
 
 ```bash
-# 使用uv安装所有依赖
-uv sync
+# 使用uv安装所有依赖（含开发工具）
+uv sync --group dev
 
-# 验证安装
-uv run python --version
+# 安装包（可编辑模式，启用 cherryquant.* 导入）
+uv run pip install -e .
+
+# 验证安装与导入
+uv run python -c "import cherryquant, sys; print('OK', cherryquant.__version__)"
 ```
 
 #### 3. 启动数据库服务
@@ -120,7 +126,29 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 ```
 
-#### 5. 运行系统
+#### 5. 初始化历史数据
+
+**首次使用建议先下载历史数据**:
+
+```bash
+# 快速下载日线数据（推荐，5-10分钟）
+uv run run_cherryquant_complete.py --download-data
+
+# 下载日线和小时线（需要高级Tushare权限，较慢）
+uv run run_cherryquant_complete.py --download-data --timeframes 1d 1h
+
+# 下载指定品种
+uv run run_cherryquant_complete.py --download-data --symbols rb cu i SR
+```
+
+**数据格式说明**:
+- 所有数据自动转换为 **VNPy 标准格式**
+- 郑商所合约使用 **3位数字**（如 `SR501.CZCE`）
+- 其他交易所使用 **4位数字**（如 `rb2501.SHFE`）
+
+详见：[数据下载指南](docs/DATA_DOWNLOAD_GUIDE.md) | [合约标准化说明](docs/SYMBOL_STANDARDIZATION.md)
+
+#### 6. 运行系统
 
 **开发模式（推荐首次运行）**:
 ```bash
@@ -132,6 +160,9 @@ uv run python run_cherryquant_ai_selection.py
 
 # 完整系统（多策略+风险+告警+Web）
 uv run python run_cherryquant_complete.py
+
+# 跳过数据检查快速启动
+uv run run_cherryquant_complete.py --skip-data-check
 ```
 
 **生产模式（需要CTP账户）**:
@@ -304,7 +335,8 @@ uv run python run_cherryquant_multi_agent.py
 - 组合级风险管理
 - 策略间协调和资金分配
 
-## 🧪 测试和验证
+## 🧪 测试和验证（CI）
+仓库已内置 GitHub Actions 工作流（.github/workflows/ci.yml），使用 uv 同步依赖并执行 Ruff（lint）、Black（格式检查）、Mypy（类型检查）与 Pytest（单元测试）。
 
 ### 配置验证
 ```bash
@@ -333,6 +365,15 @@ asyncio.run(test())
 
 ## 📖 文档
 
+### 用户文档（适合非技术人员）
+- [快速入门指南](docs/QUICK_START.md) - 5分钟了解系统（推荐首读）
+- [完整用户指南](docs/USER_GUIDE.md) - 详细使用说明和风险提示
+
+### 数据和配置
+- [数据下载指南](docs/DATA_DOWNLOAD_GUIDE.md) - 历史数据下载
+- [合约标准化说明](docs/SYMBOL_STANDARDIZATION.md) - VNPy格式说明
+
+### 技术文档
 - [系统架构](docs/ARCHITECTURE.md) - 详细的架构设计和组件说明
 - [数据流程](docs/DATA_PIPELINE.md) - 数据采集、处理、存储流程
 - [API文档](docs/api/) - AI决策API使用说明
@@ -364,26 +405,23 @@ asyncio.run(test())
 ### 项目结构
 ```
 CherryQuant/
-├── ai/                      # AI决策引擎
-│   ├── agents/             # 多策略代理
-│   ├── decision_engine/    # 决策引擎
-│   └── prompts/            # 提示词模板
-├── adapters/               # 数据适配器
-│   ├── data_adapter/       # 数据获取
-│   │   ├── contract_resolver.py  # 主力合约解析
-│   │   └── market_data_manager.py
-│   ├── data_storage/       # 数据存储
-│   └── vnpy_recorder/      # vnpy数据记录
-├── src/                    # 核心功能
+├── src/
+│   ├── cherryquant/                # 核心包（统一从 cherryquant.* 导入）
+│   │   ├── ai/                     # AI决策引擎
+│   │   ├── adapters/               # 数据/存储/录制适配层
+│   │   ├── services/               # 后台服务（数据采集等）
+│   │   ├── web/                    # Web API 与静态资源
+│   │   └── cherry_quant_strategy.py
 │   └── trading/
-│       ├── vnpy_gateway.py # CTP网关封装
-│       └── order_manager.py
-├── config/                 # 配置管理
-│   ├── strategies.json     # 策略和品种池配置
-│   └── settings/           # Pydantic配置验证
-├── docs/                   # 文档
-├── tests/                  # 测试
-└── run_*.py               # 运行脚本
+│       ├── vnpy_gateway.py         # CTP网关封装
+│       └── order_manager.py        # 智能订单管理
+├── config/                         # 配置管理
+│   ├── strategies.json             # 策略与品种池配置
+│   └── settings/                   # Pydantic配置验证
+├── docker/                         # 基础设施编排（TimescaleDB/Postgres + Redis）
+├── docs/                           # 文档
+├── tests/                          # 测试
+└── run_*.py                        # 运行脚本
 ```
 
 ### 贡献指南

@@ -8,18 +8,16 @@ import asyncio
 import logging
 import signal
 import sys
-from pathlib import Path
+
 from typing import Optional
 from datetime import datetime
 
-# 添加项目路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
 
-from ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
-from adapters.data_storage.database_manager import get_database_manager
-from adapters.data_adapter.market_data_manager import MarketDataManager
-from config.settings.settings import TRADING_CONFIG, AI_CONFIG, DATA_CONFIG, RISK_CONFIG
+
+from cherryquant.ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
+from config.settings.settings import TRADING_CONFIG, AI_CONFIG, RISK_CONFIG
 from config.database_config import get_database_config
 
 # 配置日志
@@ -49,9 +47,8 @@ class MultiAgentTradingSystem:
         try:
             logger.info("🚀 初始化CherryQuant多代理交易系统...")
 
-            # 1. 初始化数据库管理器
-            db_config = get_database_config()
-            self.db_manager = await get_database_manager(db_config)
+            # 1. 初始化数据库管理器（自动从配置读取）
+            self.db_manager = await get_database_manager()
             logger.info("✅ 数据库管理器初始化完成")
 
             # 2. 初始化市场数据管理器

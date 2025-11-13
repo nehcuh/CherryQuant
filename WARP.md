@@ -13,11 +13,11 @@ What you’ll use most
 
 - Run the apps
   - Simulation mode (recommended): uv run python run_cherryquant.py simulation
-  - Backtest mode (placeholder): uv run python run_cherryquant.py backtest
-  - Live mode (not fully implemented): uv run python run_cherryquant.py live
+  - Backtest mode（规划中，当前暂不推荐）: uv run python run_cherryquant.py backtest
+  - Live mode（规划中，使用前请阅读 README 的 live 说明）: uv run python run_cherryquant.py live
   - Realtime recorder (vn.py CTP ticks→bars): see docs/VN_RECORDER.md
   - AI market selection demo: uv run python run_cherryquant_ai_selection.py
-  - Database integration demo: uv run python demo_database_integration.py
+
 
 - Tests
   - All tests: uv run pytest tests -v
@@ -54,49 +54,48 @@ High-level architecture and flow
 
 - Entry points and modes
   - run_cherryquant.py
-    - Orchestrates modes: simulation, backtest, live
+    - Orchestrates modes: simulation（推荐）、backtest（规划中）、live（规划中）
     - Sets up logging, data sources (Tushare by default; realtime via vn.py recorder), history caching, and an async simulation loop that pulls LLM decisions and simulates trades
   - run_cherryquant_ai_selection.py
     - Full-market scan and instrument selection demo using the AISelectionEngine
-  - demo_database_integration.py
-    - End-to-end database integration demo: generate multi-timeframe data, compute indicators, store/fetch via Postgres/Redis
+
 
 - AI decisioning
-  - ai/decision_engine/futures_engine.py
-    - FuturesDecisionEngine: fetches market data (AKShare), computes indicators (MA, RSI, MACD), builds prompts (ai/prompts/futures_prompts.py), and requests JSON decisions via ai/llm_client/openai_client.py
-  - ai/decision_engine/ai_selection_engine.py
-    - AISelectionEngine: market-wide scan using adapters/data_adapter/multi_symbol_manager.py, builds a comprehensive prompt (ai/prompts/ai_selection_prompts.py), validates and returns a structured selection + trade plan
-  - ai/llm_client/openai_client.py
+  - src/cherryquant/ai/decision_engine/futures_engine.py
+    - FuturesDecisionEngine: fetches market data (AKShare), computes indicators (MA, RSI, MACD), builds prompts (src/cherryquant/ai/prompts/futures_prompts.py), and requests JSON decisions via src/cherryquant/ai/llm_client/openai_client.py
+  - src/cherryquant/ai/decision_engine/ai_selection_engine.py
+    - AISelectionEngine: market-wide scan using src/cherryquant/adapters/data_adapter/multi_symbol_manager.py, builds a comprehensive prompt (src/cherryquant/ai/prompts/ai_selection_prompts.py), validates and returns a structured selection + trade plan
+  - src/cherryquant/ai/llm_client/openai_client.py
     - Thin wrapper around OpenAI Chat Completions; async facade provided; validates decision JSON
 
 - Market data acquisition (outside vn.py)
-  - adapters/data_adapter/
-    - market_data_manager.py: pluggable sources; AKShare primary with optional SimNow/VnPy placeholders; automatic primary/fallback
+  - src/cherryquant/adapters/data_adapter/
+    - market_data_manager.py: 可插拔数据源；AKShare 为默认（dev），可选接入 SimNow/vn.py（预留实现）；支持主/备数据源自动切换
     - multi_symbol_manager.py: breadth scans of SHFE/DCE/CZCE/CFFEX with per-symbol metrics; caches recent snapshots
     - history_data_manager.py: simple local SQLite cache for historical bars with standardization
 
 - Multi-timeframe analytics (LLM-friendly)
-  - adapters/data_storage/timeframe_data_manager.py
+  - src/cherryquant/adapters/data_storage/timeframe_data_manager.py
     - TimeFrameDataManager: produces OHLCV series across monthly→minute, computes indicators, derives summaries (trend/momentum/volatility/risk), and assembles AI-optimized payloads; in demo, uses generated sample series
 
 - Data persistence and caching
-  - adapters/data_storage/database_manager.py + config/database_config.py
-    - Unified async manager for Postgres (TimescaleDB), Redis, optional InfluxDB
+  - src/cherryquant/adapters/data_storage/database_manager.py + config/database_config.py
+    - Unified async manager for Postgres (TimescaleDB) and Redis
     - CRUD for market_data, technical_indicators, ai_decisions; Redis-backed read-through caching
     - docker/sql/init.sql provisions hypertables, indexes, materialized views, and policies
 
 - Strategy integration (vn.py)
   - src/cherryquant/cherry_quant_strategy.py
-    - CtaTemplate strategy wiring LLM decisions to trading actions (buy_to_enter/sell_to_enter/close/hold), basic risk gates and stop/target placeholders
+    - CtaTemplate strategy 将 LLM 决策落地为交易动作（buy_to_enter/sell_to_enter/close/hold），具备基础风险控制与止损/止盈逻辑
     - Current simulation path in run_cherryquant.py demonstrates decision→execution loop without live gateway
 
 - Configuration
   - config/settings/settings.py: trading parameters, AI thresholds, risk limits, contract metadata
-  - config/database_config.py: Postgres/Redis/Influx endpoints, retention and source update cadence
+  - config/database_config.py: Postgres/Redis endpoints, retention and source update cadence
 
 Practical tips for this repo
 
 - Use simulation mode first; it verifies OpenAI connectivity and runs an async loop without broker connectivity
-- For database demos, ensure docker services are up before running demo_database_integration.py
+
 - Tests are light and network-sensitive; install dev deps with uv sync --group dev
 - Logging goes to logs/ and stdout; increase detail by tweaking LOGGING_CONFIG in config/settings/settings.py

@@ -18,18 +18,28 @@ logger = logging.getLogger(__name__)
 
 class DatabaseConfig(BaseModel):
     """数据库配置"""
-    postgres_host: str = Field(default="localhost", env="POSTGRES_HOST")
-    postgres_port: int = Field(default=5432, env="POSTGRES_PORT")
-    postgres_db: str = Field(default="cherryquant", env="POSTGRES_DB")
-    postgres_user: str = Field(default="cherryquant", env="POSTGRES_USER")
-    postgres_password: str = Field(default="cherryquant123", env="POSTGRES_PASSWORD")
-    
+    # MongoDB 配置
+    mongodb_uri: str = Field(default="mongodb://localhost:27017", env="MONGODB_URI", description="MongoDB连接URI")
+    mongodb_database: str = Field(default="cherryquant", env="MONGODB_DATABASE", description="MongoDB数据库名")
+    mongodb_min_pool_size: int = Field(default=5, env="MONGODB_MIN_POOL_SIZE", description="MongoDB最小连接池大小")
+    mongodb_max_pool_size: int = Field(default=50, env="MONGODB_MAX_POOL_SIZE", description="MongoDB最大连接池大小")
+    mongodb_username: Optional[str] = Field(default=None, env="MONGODB_USERNAME", description="MongoDB用户名")
+    mongodb_password: Optional[str] = Field(default=None, env="MONGODB_PASSWORD", description="MongoDB密码")
+
+    # Redis 配置（用于缓存）
     redis_host: str = Field(default="localhost", env="REDIS_HOST")
     redis_port: int = Field(default=6379, env="REDIS_PORT")
     redis_db: int = Field(default=0, env="REDIS_DB", description="Redis数据库编号")
-    
-    cache_ttl: int = Field(default=300, env="CACHE_TTL", description="缓存TTL（秒）")
-    connection_pool_size: int = Field(default=10, env="DB_POOL_SIZE", description="连接池大小")
+    redis_password: Optional[str] = Field(default=None, env="REDIS_PASSWORD", description="Redis密码")
+
+    cache_ttl: int = Field(default=300, env="DATA_CACHE_TTL", description="缓存TTL（秒）")
+
+    @validator('mongodb_uri')
+    def validate_mongodb_uri(cls, v):
+        """验证MongoDB URI"""
+        if not v.startswith("mongodb://") and not v.startswith("mongodb+srv://"):
+            raise ValueError("MongoDB URI must start with 'mongodb://' or 'mongodb+srv://'")
+        return v
 
 
 class AIConfig(BaseModel):
@@ -131,6 +141,64 @@ class DataSourceConfig(BaseModel):
         return self
 
 
+class RiskConfig(BaseModel):
+    """组合风险管理配置"""
+    max_total_capital_usage: float = Field(
+        default=0.8,
+        env="PORTFOLIO_MAX_CAPITAL_USAGE",
+        description="最大总资金使用率"
+    )
+    max_correlation_threshold: float = Field(
+        default=0.7,
+        env="PORTFOLIO_MAX_CORRELATION",
+        description="最大相关性阈值"
+    )
+    max_sector_concentration: float = Field(
+        default=0.4,
+        env="PORTFOLIO_MAX_SECTOR_CONCENTRATION",
+        description="最大单一板块集中度"
+    )
+    portfolio_stop_loss: float = Field(
+        default=0.1,
+        env="PORTFOLIO_STOP_LOSS",
+        description="组合止损比例"
+    )
+    daily_loss_limit: float = Field(
+        default=0.05,
+        env="PORTFOLIO_DAILY_LOSS_LIMIT",
+        description="每日亏损限制"
+    )
+    max_leverage_total: float = Field(
+        default=3.0,
+        env="PORTFOLIO_MAX_LEVERAGE",
+        description="总杠杆限制"
+    )
+
+    @field_validator('max_total_capital_usage', 'max_correlation_threshold', 'max_sector_concentration')
+    @classmethod
+    def validate_percentage(cls, v):
+        """验证百分比参数"""
+        if not 0 < v <= 1:
+            raise ValueError(f"Value must be between 0 and 1, got {v}")
+        return v
+
+    @field_validator('portfolio_stop_loss', 'daily_loss_limit')
+    @classmethod
+    def validate_loss_limit(cls, v):
+        """验证止损参数"""
+        if not 0 < v <= 0.5:
+            raise ValueError(f"Loss limit must be between 0 and 0.5, got {v}")
+        return v
+
+    @field_validator('max_leverage_total')
+    @classmethod
+    def validate_leverage(cls, v):
+        """验证杠杆参数"""
+        if not 1 <= v <= 10:
+            raise ValueError("max_leverage_total must be between 1 and 10")
+        return v
+
+
 class LoggingConfig(BaseModel):
     """日志配置"""
     level: str = Field(default="INFO", env="LOG_LEVEL", description="日志级别")
@@ -145,6 +213,7 @@ class CherryQuantConfig(BaseModel):
     ai: AIConfig = AIConfig()
     trading: TradingConfig = TradingConfig()
     data_source: DataSourceConfig = DataSourceConfig()
+    risk: RiskConfig = RiskConfig()
     logging: LoggingConfig = LoggingConfig()
 
     # 环境配置
@@ -174,9 +243,17 @@ class CherryQuantConfig(BaseModel):
         print(f"\n📊 数据模式: {self.data_source.mode}")
         print(f"📡 数据源: {self.data_source.source}")
         print(f"🤖 AI模型: {self.ai.model}")
-        print(f"💾 数据库: {self.database.postgres_host}:{self.database.postgres_port}/{self.database.postgres_db}")
+        print(f"💾 MongoDB: {self.database.mongodb_uri}/{self.database.mongodb_database}")
+        print(f"🗃️  Redis缓存: {self.database.redis_host}:{self.database.redis_port}/{self.database.redis_db}")
         print(f"📝 日志级别: {self.logging.level}")
         print(f"📁 日志目录: {self.logging.log_dir}")
+
+        print(f"\n🛡️  风险管理配置:")
+        print(f"  - 最大资金使用率: {self.risk.max_total_capital_usage:.0%}")
+        print(f"  - 组合止损: {self.risk.portfolio_stop_loss:.0%}")
+        print(f"  - 每日亏损限制: {self.risk.daily_loss_limit:.0%}")
+        print(f"  - 最大板块集中度: {self.risk.max_sector_concentration:.0%}")
+        print(f"  - 最大总杠杆: {self.risk.max_leverage_total:.1f}x")
 
         if self.data_source.mode == 'live':
             print(f"\n🔴 LIVE 模式配置:")
@@ -197,8 +274,8 @@ class CherryQuantConfig(BaseModel):
 
         if self.environment == "production":
             # 生产环境必须检查
-            if self.database.postgres_password == "cherryquant123":
-                issues.append("⚠️ 使用默认数据库密码，存在安全风险")
+            if not self.database.mongodb_username or not self.database.mongodb_password:
+                issues.append("⚠️ 生产环境应启用MongoDB认证")
 
             if not self.ai.api_key or self.ai.api_key == "your_openai_api_key_here":
                 issues.append("⚠️ OpenAI API密钥未配置")

@@ -21,7 +21,12 @@ classifiers = [
     "Natural Language :: Chinese (Simplified)",
 ]
 requires-python = ">=3.10"
-dependencies = ["vnpy>=3.0.0"]
+dependencies = [
+    "meson-python>=0.18.0",
+    "ninja>=1.13.0",
+    "pybind11>=3.0.1",
+    "vnpy>=3.0.0",
+]
 keywords = ["quant", "quantitative", "investment", "trading", "algotrading", "ctp"]
 
 [project.urls]

@@ -56,11 +56,11 @@ case $choice in
         uv run python run_cherryquant.py simulation
         ;;
     2)
-        echo "📊 启动回测模式..."
+        echo "📊 回测模式（规划中，当前暂不推荐）..."
         uv run python run_cherryquant.py backtest
         ;;
     3)
-        echo "⚠️  警告：即将启动实盘交易模式"
+        echo "⚠️  警告：即将启动实盘交易模式（请先阅读 README 的 live 说明）"
         read -p "确认继续？(yes/no): " confirm
         if [ "$confirm" = "yes" ]; then
             echo "🚀 启动实盘模式..."

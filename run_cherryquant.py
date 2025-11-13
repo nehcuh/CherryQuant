@@ -11,10 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-# 添加项目路径到Python路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
+# 使用包导入，无需修改 sys.path
 
 # Optional vn.py imports (not required for headless simulation)
 try:
@@ -27,14 +24,14 @@ except Exception:  # vn.py not installed/available on macOS without CTP
     MainEngine = None  # type: ignore
 
 from config.settings.settings import TRADING_CONFIG, LOGGING_CONFIG, AI_CONFIG
-from adapters.data_adapter.market_data_manager import (
+from cherryquant.adapters.data_adapter.market_data_manager import (
     create_default_data_manager,
     create_simnow_data_manager,
     create_tushare_data_manager,
 )
-from adapters.data_adapter.history_data_manager import HistoryDataManager
-from adapters.data_adapter.contract_resolver import ContractResolver
-from adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_adapter.history_data_manager import HistoryDataManager
+from cherryquant.adapters.data_adapter.contract_resolver import ContractResolver
+from cherryquant.adapters.data_storage.database_manager import get_database_manager
 from config.database_config import get_database_config
 
 
@@ -167,7 +164,7 @@ async def test_ai_connection():
     logger.info("正在测试AI连接...")
 
     try:
-        from ai.decision_engine.futures_engine import FuturesDecisionEngine
+        from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
         from config.settings.settings import AI_CONFIG
         import os
 
@@ -223,8 +220,8 @@ def run_backtest_mode():
     try:
         # 这里可以实现回测逻辑
         # 暂时输出提示信息
-        logger.info("回测模式开发中...")
-        logger.info("建议使用实盘模拟模式进行测试")
+        logger.info("回测模块规划中：当前版本尚未提供完整回测功能。")
+        logger.info("建议暂时使用“simulation”模式进行验证，或关注后续版本更新。")
 
     except Exception as e:
         logger.error(f"回测模式启动失败: {e}")
@@ -294,7 +291,7 @@ async def simulate_ai_trading_loop(strategy_settings, market_data_manager, db_ma
     logger.info("开始模拟AI交易循环（5m 对齐）...")
 
     try:
-        from ai.decision_engine.futures_engine import FuturesDecisionEngine
+        from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
 
         ai_engine = FuturesDecisionEngine(
             db_manager=db_manager, market_data_manager=market_data_manager
@@ -555,8 +552,7 @@ def main():
         logger.info("🔍 检查系统状态...")
 
         # 1. 初始化数据库（需要在setup_data_sources之前，以便Live模式使用）
-        db_config = get_database_config()
-        db_manager = asyncio.run(get_database_manager(db_config))
+        db_manager = asyncio.run(get_database_manager())
         logger.info("✅ 数据库管理器初始化完成")
 
         # 2. 测试AI连接
