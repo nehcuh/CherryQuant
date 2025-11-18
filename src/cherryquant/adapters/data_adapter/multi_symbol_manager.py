@@ -11,9 +11,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 
-from cherryquant.adapters.data_storage.database_manager import get_database_manager, DatabaseManager
+from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame
-from config.database_config import get_database_config
 
 logger = logging.getLogger(__name__)
 
@@ -90,18 +89,25 @@ class ChineseFuturesMarket:
     # 旧的 AKShare 映射已移除
 
 class MultiSymbolDataManager:
-    """多品种数据管理器（从 DB 快照读取）"""
+    """多品种数据管理器（从 DB 快照读取）
 
-    def __init__(self):
+    注意：不再在内部创建数据库连接，而是要求调用方注入
+    已初始化好的 DatabaseManager 实例，这样可以保持 adapters 层
+    对配置和环境变量的无感知，更符合清晰的分层设计。
+    """
+
+    def __init__(self, db_manager: Optional[DatabaseManager] = None):
         self.futures_market = ChineseFuturesMarket()
-        self.cache = {}
-        self.last_update = {}
+        self.cache: Dict[str, Any] = {}
+        self.last_update: Dict[str, datetime] = {}
         self.cache_duration = 300  # 5分钟缓存
-        self.db_manager: Optional[DatabaseManager] = None
+        self.db_manager: Optional[DatabaseManager] = db_manager
 
     async def _ensure_db(self) -> DatabaseManager:
         if self.db_manager is None:
-            self.db_manager = await get_database_manager()
+            raise RuntimeError(
+                "MultiSymbolDataManager.db_manager 未设置；请在组合根或调用方中注入 DatabaseManager"
+            )
         return self.db_manager
 
     async def get_all_market_data(self, exclude_exchanges: List[str] = None) -> Dict[str, Any]:

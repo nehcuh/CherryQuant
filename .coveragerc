@@ -1,0 +1,49 @@
+[run]
+source = src/cherryquant
+omit =
+    # Omit test files
+    */tests/*
+    */test_*.py
+    # Omit third-party and vendored code
+    */third_party/*
+    */vnpy_ctp-*/*
+    # Omit generated files
+    */__pycache__/*
+    */.venv/*
+    */venv/*
+    # Omit development scripts
+    */examples/*
+    */scripts/*
+    # Omit configuration files
+    */config/*
+
+[report]
+# Regexes for lines to exclude from consideration
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug-only code
+    def __repr__
+    if self\.debug
+
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run
+    if 0:
+    if __name__ == .__main__.:
+
+    # Don't complain about abstract methods
+    @(abc\.)?abstractmethod
+    @abstractmethod
+
+    # Don't complain about type checking blocks
+    if TYPE_CHECKING:
+
+precision = 2
+show_missing = True
+
+[html]
+directory = htmlcov

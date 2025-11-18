@@ -14,12 +14,9 @@ from pathlib import Path
 
 
 from config.settings.settings import TRADING_CONFIG, LOGGING_CONFIG
-from cherryquant.adapters.data_storage.database_manager import get_database_manager
-from config.database_config import DATABASE_CONFIG
+from cherryquant.bootstrap.app_context import create_app_context
 
-
-
-from cherryquant.adapters.data_adapter.multi_symbol_manager import multi_symbol_manager
+from cherryquant.adapters.data_adapter.multi_symbol_manager import MultiSymbolDataManager
 from cherryquant.ai.decision_engine.ai_selection_engine import AISelectionEngine
 
 def setup_logging():
@@ -40,36 +37,6 @@ def setup_logging():
 
     return logging.getLogger(__name__)
 
-async def test_ai_connection():
-    """测试AI连接"""
-    logger = logging.getLogger(__name__)
-
-    # 检查API Key
-    api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-
-    logger.info(f"🔍 AI配置检查:")
-    logger.info(f"   Base URL: {base_url}")
-    logger.info(f"   API Key: {'已配置' if api_key else '未配置'}")
-
-    if not api_key or "your_openai_api_key_here" in api_key:
-        logger.info("⚠️  未检测到有效的API Key，将使用演示模式")
-        return False
-
-    # 测试真实连接
-    try:
-        tushare_token = os.getenv("TUSHARE_TOKEN")
-        engine = AISelectionEngine(tushare_token=tushare_token)
-        if await engine.test_connection():
-            logger.info("✅ AI连接测试成功")
-            return True
-        else:
-            logger.info("❌ AI连接测试失败，将使用演示模式")
-            return False
-
-    except Exception as e:
-        logger.info(f"⚠️  AI连接测试异常: {e}，将使用演示模式")
-        return False
 
 def create_demo_ai_selection_decision() -> dict:
     """创建模拟AI选择决策"""
@@ -195,9 +162,27 @@ async def ai_selection_demo():
     logger.info("🎮 CherryQuant AI品种选择演示开始")
     logger.info("=" * 80)
 
+    # 构建应用上下文（配置 + MongoDB + Redis + AI 客户端）
+    ctx = await create_app_context()
+    db_manager = ctx.db
+
+    # 初始化多品种市场数据管理器（从 MongoDB 快照读取）
+    multi_symbol_mgr = MultiSymbolDataManager(db_manager=db_manager)
+
     # 初始化AI选择引擎
-    tushare_token = os.getenv("TUSHARE_TOKEN")
-    engine = AISelectionEngine(tushare_token=tushare_token)
+    tushare_token = ctx.config.data_source.tushare_token
+    engine = AISelectionEngine(
+        ai_client=ctx.ai_client,
+        tushare_token=tushare_token,
+        market_data_manager=multi_symbol_mgr,
+    )
+
+    # 一次性测试 AI 连接
+    api_available = await engine.test_connection()
+    if api_available:
+        logger.info("✅ 将使用真实AI进行市场分析和品种选择")
+    else:
+        logger.info("🎮 未检测到有效AI配置，将使用模拟AI进行演示")
 
     # 模拟账户信息
     account_info = {
@@ -220,9 +205,7 @@ async def ai_selection_demo():
             logger.info(f"   账户状态: 余额¥{account_info['account_value']:,.2f}, 可用¥{account_info['cash_available']:,.2f}")
             logger.info(f"   当前持仓: {len(current_positions)} 个合约")
 
-            # 检查API连接
-            api_available = await test_ai_connection()
-
+            # 根据前置检测结果选择使用真实 AI 或模拟 AI
             if api_available:
                 # 使用真实AI
                 logger.info("🤖 正在调用真实AI分析全市场...")
@@ -241,7 +224,6 @@ async def ai_selection_demo():
                 # 展示AI分析结果
                 # 持久化AI选择的交易到数据库
                 try:
-                    db_manager = await get_database_manager()
                     selected_trade = decision.get("selected_trade", {})
                     if selected_trade:
                         ai_db_record = {
@@ -376,6 +358,9 @@ async def ai_selection_demo():
     # 最终统计
     logger.info("🎉 AI品种选择演示完成！")
     logger.info("=" * 80)
+
+    # 关闭应用上下文
+    await ctx.close()
     logger.info("📊 最终统计:")
     logger.info(f"   总分析周期: {cycle_count}")
     logger.info(f"   最终持仓: {len(current_positions)} 个")
@@ -405,14 +390,6 @@ def main():
 
     try:
         logger.info("🔍 系统检查...")
-
-        # 检查AI连接
-        api_available = asyncio.run(test_ai_connection())
-
-        if api_available:
-            logger.info("✅ 将使用真实AI进行市场分析和品种选择")
-        else:
-            logger.info("🎮 将使用模拟AI进行演示")
 
         logger.info("✅ 系统检查通过")
 

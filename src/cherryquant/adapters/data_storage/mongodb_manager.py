@@ -314,26 +314,31 @@ async def get_mongodb_manager(
     获取 MongoDB 管理器（便捷函数）
 
     Args:
-        uri: MongoDB URI（默认从环境变量读取）
-        database: 数据库名称（默认从环境变量读取）
-        **kwargs: 其他连接选项
+        uri: MongoDB URI（默认使用 CherryQuantConfig.database.mongodb_uri）
+        database: 数据库名称（默认使用 CherryQuantConfig.database.mongodb_database）
+        **kwargs: 其他连接选项（如未提供，将使用 CherryQuantConfig 中的连接池/认证配置）
 
     Returns:
         MongoDB 连接管理器
     """
-    import os
+    # 延迟导入以避免潜在循环依赖
+    from config.settings.base import CONFIG
 
-    # 从环境变量读取默认值
+    db_cfg = CONFIG.database
+
+    # 使用集中配置作为默认值
     if uri is None:
-        uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+        uri = db_cfg.mongodb_uri
     if database is None:
-        database = os.getenv("MONGODB_DATABASE", "cherryquant")
+        database = db_cfg.mongodb_database
 
-    # 从环境变量读取其他配置
-    kwargs.setdefault("min_pool_size", int(os.getenv("MONGODB_MIN_POOL_SIZE", "5")))
-    kwargs.setdefault("max_pool_size", int(os.getenv("MONGODB_MAX_POOL_SIZE", "50")))
-    kwargs.setdefault("username", os.getenv("MONGODB_USERNAME"))
-    kwargs.setdefault("password", os.getenv("MONGODB_PASSWORD"))
+    # 连接池和认证配置：显式参数优先，其次使用集中配置
+    kwargs.setdefault("min_pool_size", db_cfg.mongodb_min_pool_size)
+    kwargs.setdefault("max_pool_size", db_cfg.mongodb_max_pool_size)
+    if db_cfg.mongodb_username is not None:
+        kwargs.setdefault("username", db_cfg.mongodb_username)
+    if db_cfg.mongodb_password is not None:
+        kwargs.setdefault("password", db_cfg.mongodb_password)
 
     return await MongoDBConnectionPool.get_manager(uri=uri, database=database, **kwargs)
 

@@ -15,10 +15,9 @@ from datetime import datetime
 
 
 from cherryquant.ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
-from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
-from config.settings.settings import TRADING_CONFIG, AI_CONFIG, RISK_CONFIG
-from config.database_config import get_database_config
+from cherryquant.bootstrap.app_context import create_app_context
 
 # 配置日志
 logging.basicConfig(
@@ -35,11 +34,26 @@ logger = logging.getLogger(__name__)
 class MultiAgentTradingSystem:
     """多代理AI交易系统"""
 
-    def __init__(self):
-        """初始化交易系统"""
-        self.db_manager: Optional = None
-        self.market_data_manager: Optional = None
-        self.agent_manager: Optional = None
+    def __init__(
+        self,
+        db_manager: DatabaseManager,
+        market_data_manager: MarketDataManager,
+        ai_client,
+        risk_config: Optional[PortfolioRiskConfig] = None,
+    ):
+        """初始化交易系统
+
+        Args:
+            db_manager: 已初始化的 DatabaseManager 实例
+            market_data_manager: 已初始化的 MarketDataManager 实例
+            ai_client: 已初始化的 LLM 客户端实例
+            risk_config: 组合风险配置（可选；默认从全局 CONFIG 加载）
+        """
+        self.db_manager: DatabaseManager = db_manager
+        self.market_data_manager: MarketDataManager = market_data_manager
+        self.ai_client = ai_client
+        self.risk_config = risk_config
+        self.agent_manager: Optional[AgentManager] = None
         self.is_running = False
 
     async def initialize(self) -> bool:
@@ -47,29 +61,21 @@ class MultiAgentTradingSystem:
         try:
             logger.info("🚀 初始化CherryQuant多代理交易系统...")
 
-            # 1. 初始化数据库管理器（自动从配置读取）
-            self.db_manager = await get_database_manager()
-            logger.info("✅ 数据库管理器初始化完成")
+            # 1. 数据库管理器和市场数据管理器由调用方注入
+            logger.info("✅ 数据库管理器已注入")
 
-            # 2. 初始化市场数据管理器
-            self.market_data_manager = MarketDataManager(self.db_manager)
+            # 2. 初始化市场数据管理器（目前 initialize 为兼容占位实现）
             await self.market_data_manager.initialize()
             logger.info("✅ 市场数据管理器初始化完成")
 
             # 3. 初始化代理管理器
-            risk_config = PortfolioRiskConfig(
-                max_total_capital_usage=RISK_CONFIG.get('max_drawdown', 0.8),
-                max_correlation_threshold=TRADING_CONFIG['ai_config'].get('max_correlation_threshold', 0.7),
-                max_sector_concentration=0.4,
-                portfolio_stop_loss=RISK_CONFIG.get('max_drawdown', 0.15),
-                daily_loss_limit=RISK_CONFIG.get('max_loss_per_day', 0.05),
-                max_leverage_total=TRADING_CONFIG.get('default_leverage', 5.0)
-            )
+            risk_config = self.risk_config or PortfolioRiskConfig.from_config()
 
             self.agent_manager = AgentManager(
                 db_manager=self.db_manager,
                 market_data_manager=self.market_data_manager,
-                risk_config=risk_config
+                risk_config=risk_config,
+                ai_client=self.ai_client,
             )
             logger.info("✅ 代理管理器初始化完成")
 
@@ -209,7 +215,29 @@ class MultiAgentTradingSystem:
 
 async def main():
     """主函数"""
-    trading_system = MultiAgentTradingSystem()
+    # 使用应用上下文集中管理配置与数据库连接
+    ctx = await create_app_context()
+
+    # 注入 DatabaseManager 到 MarketDataManager
+    market_data_manager = MarketDataManager(db_manager=ctx.db)
+
+    # 从配置构建组合风险参数
+    risk = ctx.config.risk
+    risk_config = PortfolioRiskConfig(
+        max_total_capital_usage=risk.max_total_capital_usage,
+        max_correlation_threshold=risk.max_correlation_threshold,
+        max_sector_concentration=risk.max_sector_concentration,
+        portfolio_stop_loss=risk.portfolio_stop_loss,
+        daily_loss_limit=risk.daily_loss_limit,
+        max_leverage_total=risk.max_leverage_total,
+    )
+
+    trading_system = MultiAgentTradingSystem(
+        db_manager=ctx.db,
+        market_data_manager=market_data_manager,
+        ai_client=ctx.ai_client,
+        risk_config=risk_config,
+    )
 
     # 设置信号处理
     def signal_handler(signum, frame):
@@ -219,23 +247,27 @@ async def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # 检查命令行参数
-    if len(sys.argv) > 1:
-        if sys.argv[1] == '--status':
-            # 只显示状态模式
-            await trading_system.initialize()
-            await trading_system.show_status()
-        elif sys.argv[1] == '--help':
-            print("用法: python run_cherryquant_multi_agent.py [选项]")
-            print("选项:")
-            print("  --status   只显示实时状态监控")
-            print("  --help     显示帮助信息")
+    try:
+        # 检查命令行参数
+        if len(sys.argv) > 1:
+            if sys.argv[1] == '--status':
+                # 只显示状态模式
+                await trading_system.initialize()
+                await trading_system.show_status()
+            elif sys.argv[1] == '--help':
+                print("用法: python run_cherryquant_multi_agent.py [选项]")
+                print("选项:")
+                print("  --status   只显示实时状态监控")
+                print("  --help     显示帮助信息")
+            else:
+                print(f"未知参数: {sys.argv[1]}")
+                print("使用 --help 查看帮助信息")
         else:
-            print(f"未知参数: {sys.argv[1]}")
-            print("使用 --help 查看帮助信息")
-    else:
-        # 正常启动模式
-        await trading_system.start()
+            # 正常启动模式
+            await trading_system.start()
+    finally:
+        # 确保关闭数据库等底层资源
+        await ctx.close()
 
 if __name__ == "__main__":
     try:

@@ -11,7 +11,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 
 from ..decision_engine.futures_engine import FuturesDecisionEngine
-from ..llm_client.openai_client import AsyncOpenAIClient
+from ..llm_client.openai_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,8 @@ class StrategyAgent:
         self,
         config: StrategyConfig,
         db_manager: Optional[Any] = None,
-        market_data_manager: Optional[Any] = None
+        market_data_manager: Optional[Any] = None,
+        ai_client: Optional[LLMClient] = None,
     ):
         """初始化策略代理
 
@@ -111,6 +112,7 @@ class StrategyAgent:
         self.config = config
         self.db_manager = db_manager
         self.market_data_manager = market_data_manager
+        self.ai_client = ai_client
 
         # 状态管理
         self.status = AgentStatus.IDLE
@@ -134,16 +136,23 @@ class StrategyAgent:
         self.max_drawdown = 0.0
         self.peak_value = config.initial_capital
 
-        # AI决策引擎
+        # AI决策引擎（通过依赖注入获得 LLM 客户端）
+        if self.ai_client is None:
+            raise RuntimeError(
+                "StrategyAgent.ai_client 未设置；请在 AgentManager 或组合根中注入 LLMClient 实例"
+            )
+
         self.decision_engine = FuturesDecisionEngine(
+            ai_client=self.ai_client,
             db_manager=db_manager,
-            market_data_manager=market_data_manager
+            market_data_manager=market_data_manager,
         )
 
         # 合约解析器（用于动态获取主力合约）
         from cherryquant.adapters.data_adapter.contract_resolver import ContractResolver
-        import os
-        tushare_token = os.getenv("TUSHARE_TOKEN")
+        from config.settings.base import CONFIG
+
+        tushare_token = CONFIG.data_source.tushare_token
         self.contract_resolver = ContractResolver(tushare_token) if tushare_token else None
 
         logger.info(f"策略代理初始化完成: {config.strategy_name} ({config.strategy_id})")

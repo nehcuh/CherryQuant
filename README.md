@@ -51,6 +51,22 @@ CherryQuant 是一个基于 **AI 驱动**的中国期货市场自动化交易系
 - **CTP账户**: SimNow模拟账户 或 实盘账户（live模式需要）
 - **Tushare Pro**: Token（推荐2000+积分，用于分钟线和主力合约查询）
 
+### 第三方依赖与本地编译（重要）
+
+本项目 **随仓库一起包含** 了部分第三方依赖源码，用于保证在中国期货场景下的版本可控，其中包括：
+
+- `vnpy_ctp-6.7.7.2`：位于 `third_party/vnpy_ctp-6.7.7.2/`，作为 `vnpy-ctp` 包的源码（未修改的上游版本）。
+
+安装依赖时（例如执行 `uv sync --group dev`）会从该目录 **本地编译** `vnpy-ctp`，因此你需要提前安装：
+
+- C/C++ 编译工具链（例如：
+  - macOS: `xcode-select --install`
+  - Ubuntu/Debian: `sudo apt-get install -y build-essential ninja-build meson pkg-config python3-dev`
+  - Windows: 安装 Visual Studio Build Tools / 带 C++ 的 Visual Studio）
+- Python 构建工具链：`meson`, `ninja`, `pybind11` 等（会由 `vnpy-ctp` 的 `pyproject.toml` 自动透传并安装）
+
+> 提示：如果本地不满足 CTP SDK 或平台限制，`vnpy-ctp` 可能编译/导入失败，此时系统会通过 `CTP_AVAILABLE` 标志自动降级，不影响 **dev / simulation** 模式运行。
+
 ### 安装步骤
 
 #### 1. 克隆项目

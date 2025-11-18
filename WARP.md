@@ -8,6 +8,7 @@ What you’ll use most
 
 - Setup (once per machine)
   - uv env + deps: uv sync --group dev
+    - Note: uv will also build the vendored `vnpy-ctp` from `third_party/vnpy_ctp-6.7.7.2` using meson/ninja; ensure a working C/C++ toolchain is installed (see README “第三方依赖与本地编译”).
   - Example env: cp .env.example .env
   - Start data services: docker-compose -f docker/docker-compose.yml up -d
 

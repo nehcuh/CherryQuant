@@ -23,17 +23,11 @@ except Exception:
 # These imports are wrapped in try/except to avoid hard import-time failures
 # if dependencies are not yet installed or when running partial setups.
 try:  # pragma: no cover
-    from .adapters.data_storage.database_manager import (  # type: ignore
-        DatabaseConfig,
-        DatabaseManager,
-        get_database_manager,
-    )
+    from .adapters.data_storage.database_manager import DatabaseManager  # type: ignore
 
     __all__ = [
         "__version__",
-        "DatabaseConfig",
         "DatabaseManager",
-        "get_database_manager",
     ]
 except Exception:  # pragma: no cover
     __all__ = ["__version__"]

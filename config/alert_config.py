@@ -1,35 +1,40 @@
 """
 警报配置文件
 配置各种通知渠道的参数
+
+当前实现通过 CherryQuantConfig.alerts 统一管理，避免在业务代码中直接读取环境变量。
 """
 
-import os
 from typing import Dict, Any
 
+from config.settings.base import CONFIG
+
 def get_alert_config() -> Dict[str, Any]:
-    """获取警报配置"""
+    """获取警报配置（从 CherryQuantConfig.alerts 派生字典结构）"""
+    alerts = CONFIG.alerts
+
     return {
         "email": {
-            "smtp_server": os.getenv("SMTP_SERVER", "smtp.gmail.com"),
-            "smtp_port": int(os.getenv("SMTP_PORT", "587")),
-            "sender": os.getenv("EMAIL_SENDER", "cherryquant@example.com"),
-            "username": os.getenv("EMAIL_USERNAME", "cherryquant@example.com"),
-            "password": os.getenv("EMAIL_PASSWORD", ""),
-            "recipients": os.getenv("EMAIL_RECIPIENTS", "admin@example.com").split(",")
+            "smtp_server": alerts.smtp_server,
+            "smtp_port": alerts.smtp_port,
+            "sender": alerts.email_sender,
+            "username": alerts.email_username,
+            "password": alerts.email_password,
+            "recipients": alerts.email_recipients,
         },
         "wechat": {
-            "webhook_url": os.getenv("WECHAT_WEBHOOK_URL", ""),
-            "enabled": bool(os.getenv("WECHAT_ENABLED", "false").lower() == "true")
+            "webhook_url": alerts.wechat_webhook_url,
+            "enabled": alerts.wechat_enabled,
         },
         "dingtalk": {
-            "webhook_url": os.getenv("DINGTALK_WEBHOOK_URL", ""),
-            "enabled": bool(os.getenv("DINGTALK_ENABLED", "false").lower() == "true")
+            "webhook_url": alerts.dingtalk_webhook_url,
+            "enabled": alerts.dingtalk_enabled,
         },
         "webhook": {
-            "url": os.getenv("ALERT_WEBHOOK_URL", ""),
+            "url": alerts.alert_webhook_url,
             "headers": {
-                "Authorization": f"Bearer {os.getenv('WEBHOOK_TOKEN', '')}",
-                "Content-Type": "application/json"
-            }
-        }
+                "Authorization": f"Bearer {alerts.webhook_token}",
+                "Content-Type": "application/json",
+            },
+        },
     }

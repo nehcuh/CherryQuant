@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 
 from ..prompts.futures_prompts import FUTURES_SYSTEM_PROMPT, FUTURES_USER_PROMPT_TEMPLATE
-from ..llm_client.openai_client import AsyncOpenAIClient
+from ..llm_client.openai_client import LLMClient
 from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
 from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 
@@ -20,14 +20,20 @@ logger = logging.getLogger(__name__)
 class FuturesDecisionEngine:
     """期货AI决策引擎"""
 
-    def __init__(self, db_manager: Optional[DatabaseManager] = None, market_data_manager: Optional[MarketDataManager] = None):
+    def __init__(
+        self,
+        ai_client: LLMClient,
+        db_manager: Optional[DatabaseManager] = None,
+        market_data_manager: Optional[MarketDataManager] = None,
+    ):
         """初始化决策引擎
 
         Args:
+            ai_client: 已初始化的 LLM 客户端（通常来自 AppContext.ai_client）
             db_manager: 可选的数据库管理器，用于优先从本地数据库读取/写入
             market_data_manager: 可选的数据管理器，用于行情回退获取
         """
-        self.ai_client = AsyncOpenAIClient()
+        self.ai_client = ai_client
         self.start_time = datetime.now()
         self.db_manager = db_manager
         self.market_data_manager = market_data_manager
@@ -318,7 +324,7 @@ class FuturesDecisionEngine:
 
     async def test_connection(self) -> bool:
         """测试AI连接"""
-        return await self.ai_client.test_connection_async()
+        return await self.ai_client.test_connection()
 
     async def close(self) -> None:
         """释放底层资源（如HTTP客户端）"""

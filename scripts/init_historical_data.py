@@ -15,9 +15,7 @@ import pandas as pd
 
 
 
-from cherryquant.adapters.data_storage.database_manager import get_database_manager
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
-from config.database_config import get_database_config
 from src.cherryquant.utils.symbol_standardizer import SymbolStandardizer
 import tushare as ts
 
@@ -66,10 +64,17 @@ class HistoricalDataInitializer:
             logger.warning("⚠️ Tushare Token 未配置")
 
     async def _ensure_db_manager(self) -> None:
-        """确保数据库管理器已初始化"""
-        if self.db_manager is None:
-            self.db_manager = await get_database_manager()
-            logger.info("✅ 数据库连接已建立")
+        """确保数据库管理器已初始化（PostgreSQL 版本已废弃）。
+
+        注意：原始实现依赖 PostgreSQL (postgres_pool) 和 TimescaleDB，
+        当前 CherryQuant 已迁移至 MongoDB 时序集合，本工具尚未适配。
+        为避免误用，这里直接抛出异常并提示使用新的数据初始化流程
+        （基于 QuantBox + MongoDB，详见 MONGODB_MIGRATION_COMPLETE.md）。
+        """
+        raise RuntimeError(
+            "HistoricalDataInitializer 仍基于旧的 PostgreSQL 设计，"
+            "MongoDB 版本请使用 QuantBox + Mongo 初始化流程（详见文档）。"
+        )
 
     async def check_database_status(self) -> Dict[str, int]:
         """检查数据库中的数据状态"""

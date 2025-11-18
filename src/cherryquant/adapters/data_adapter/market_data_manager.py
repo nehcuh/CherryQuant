@@ -9,9 +9,10 @@ import logging
 from typing import Dict, Any, Optional, List, Protocol, runtime_checkable
 from datetime import datetime, timedelta
 import asyncio
-import os
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
+
+from config.settings.base import CONFIG
 
 # import akshare as ak  # 已移除，使用 QuantBox 替代
 import pandas as pd
@@ -72,10 +73,15 @@ class DataSourceStatus:
 class TushareDataSource:
     """Tushare数据源实现（Pro接口）"""
 
-    def __init__(self, token: str = None):
+    def __init__(self, token: Optional[str] = None):
         self._name = "Tushare"
         self._description = "Tushare Pro 接口"
-        self._token = (token or os.getenv("TUSHARE_TOKEN") or "").strip()
+
+        # 优先使用显式传入的 token，其次使用 CherryQuantConfig.data_source.tushare_token
+        if token is None:
+            token = CONFIG.data_source.tushare_token
+        self._token = (token or "").strip()
+
         self._ts = None
         self._token_valid = False
 
@@ -458,27 +464,35 @@ class SimNowDataSource:
         pass
 
 
-def create_default_data_manager(db_manager=None) -> MarketDataManager:
-    """创建默认的数据管理器（支持双模式）"""
-    # 加载环境变量
-    from dotenv import load_dotenv
-    load_dotenv()
+def create_default_data_manager(
+    db_manager=None,
+    *,
+    data_mode: Optional[str] = None,
+    tushare_token: Optional[str] = None,
+) -> MarketDataManager:
+    """创建默认的数据管理器（支持双模式）
 
-    # 获取数据模式
-    data_mode = os.getenv('DATA_MODE', 'dev').lower()
+    Args:
+        db_manager: 可选的数据库管理器实例
+        data_mode: 数据模式（"dev" 或 "live"），未提供时使用 CherryQuantConfig.data_source.mode
+        tushare_token: Tushare Token，未提供时使用 CherryQuantConfig.data_source.tushare_token
+    """
+    # 获取数据模式（优先使用显式参数，其次使用集中配置）
+    if data_mode is None:
+        data_mode = (CONFIG.data_source.mode or "dev").lower()
     manager = MarketDataManager(db_manager=db_manager, mode=data_mode)
 
     logger.info(f"数据管理器模式: {data_mode.upper()}")
 
+    # 统一获取 Tushare Token（显式参数优先，其次集中配置）
+    effective_token = tushare_token if tushare_token is not None else CONFIG.data_source.tushare_token
+
     if data_mode == "dev":
         # Dev模式：使用 Tushare (via QuantBox) 作为主数据源
-        # AKShare 已移除 - 使用 HistoryDataManager (QuantBox) 替代
         logger.info("✅ Dev模式：使用 QuantBox 提供的 Tushare 数据")
 
-        # Tushare作为主数据源（通过 QuantBox）
-        tushare_token = os.getenv('TUSHARE_TOKEN')
-        if tushare_token and tushare_token != 'your_tushare_pro_token_here':
-            ts_source = TushareDataSource(token=tushare_token)
+        if effective_token and effective_token != "your_tushare_pro_token_here":
+            ts_source = TushareDataSource(token=effective_token)
             if ts_source.is_available():
                 manager.add_data_source(ts_source, is_primary=True)
                 logger.info("✅ Dev模式：主数据源 Tushare（通过 QuantBox）")
@@ -489,18 +503,8 @@ def create_default_data_manager(db_manager=None) -> MarketDataManager:
         # Live模式：主要从数据库读取RealtimeRecorder写入的实时数据
         logger.info("✅ Live模式：主数据源 MongoDB（CTP实时 tick聚合）")
 
-        # Tushare 作为备用（历史数据）
-        tushare_token = os.getenv('TUSHARE_TOKEN')
-        if tushare_token and tushare_token != 'your_tushare_pro_token_here':
-            ts_source = TushareDataSource(token=tushare_token)
-            if ts_source.is_available():
-                manager.add_data_source(ts_source, is_primary=False)
-                logger.info("✅ Live模式：备用数据源 Tushare")
-
-        # Tushare作为备用
-        tushare_token = os.getenv('TUSHARE_TOKEN')
-        if tushare_token and tushare_token != 'your_tushare_pro_token_here':
-            ts_source = TushareDataSource(token=tushare_token)
+        if effective_token and effective_token != "your_tushare_pro_token_here":
+            ts_source = TushareDataSource(token=effective_token)
             if ts_source.is_available():
                 manager.add_data_source(ts_source, is_primary=False)
                 logger.info("✅ Live模式：备用数据源 Tushare")
@@ -509,7 +513,12 @@ def create_default_data_manager(db_manager=None) -> MarketDataManager:
     return manager
 
 
-def create_simnow_data_manager(userid: str, password: str) -> MarketDataManager:
+def create_simnow_data_manager(
+    userid: str,
+    password: str,
+    *,
+    tushare_token: Optional[str] = None,
+) -> MarketDataManager:
     """创建Simnow数据管理器"""
     manager = MarketDataManager()
 
@@ -519,8 +528,9 @@ def create_simnow_data_manager(userid: str, password: str) -> MarketDataManager:
 
     # AKShare 已移除 - 使用 Tushare (via QuantBox) 作为备用
     # 如有Tushare Token，则加入备用数据源
-    tushare_token = os.getenv('TUSHARE_TOKEN')
-    if tushare_token and tushare_token != 'your_tushare_pro_token_here':
+    if tushare_token is None:
+        tushare_token = CONFIG.data_source.tushare_token
+    if tushare_token and tushare_token != "your_tushare_pro_token_here":
         ts_source = TushareDataSource(token=tushare_token)
         if ts_source.is_available():
             manager.add_data_source(ts_source, is_primary=False)

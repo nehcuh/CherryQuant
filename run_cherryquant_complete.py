@@ -14,14 +14,14 @@ from datetime import datetime
 
 
 from cherryquant.ai.agents.agent_manager import AgentManager, PortfolioRiskConfig
-from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
+from cherryquant.bootstrap.app_context import create_app_context
 from src.risk.portfolio_risk_manager import PortfolioRiskManager
 from src.alerts.alert_manager import AlertManager
 from utils.ai_logger import get_ai_logger
 from cherryquant.web.api.main import create_app, run_server
 from config.settings.settings import TRADING_CONFIG, AI_CONFIG, RISK_CONFIG
-from config.database_config import get_database_config
 from config.alert_config import get_alert_config
 
 # 配置日志
@@ -42,7 +42,8 @@ class CherryQuantSystem:
 
     def __init__(self):
         """初始化系统"""
-        self.db_manager: Optional = None
+        self.db_manager: Optional[DatabaseManager] = None
+        self.app_ctx = None
         self.market_data_manager: Optional = None
         self.agent_manager: Optional = None
         self.risk_manager: Optional = None
@@ -55,9 +56,10 @@ class CherryQuantSystem:
 
         self.is_running = False
         self.startup_tasks = []
-        self.data_mode = os.getenv("DATA_MODE", "dev").lower()
+        # data_mode / tushare_token 将在 initialize() 阶段从 CherryQuantConfig 读取
+        self.data_mode = "dev"
         self.skip_data_check = False  # 是否跳过数据检查
-        self.tushare_token = os.getenv("TUSHARE_TOKEN")
+        self.tushare_token: Optional[str] = None
 
     async def _check_and_init_historical_data(self) -> None:
         """检查数据库并询问是否初始化历史数据"""
@@ -142,9 +144,15 @@ class CherryQuantSystem:
         try:
             logger.info("🚀 初始化CherryQuant完整交易系统...")
 
-            # 1. 初始化数据库管理器（自动从配置读取）
-            self.db_manager = await get_database_manager()
+            # 1. 初始化数据库管理器（通过 AppContext 注入）
+            if self.app_ctx is None:
+                self.app_ctx = await create_app_context()
+            self.db_manager = self.app_ctx.db
             logger.info("✅ 数据库管理器初始化完成")
+
+            # 从配置中读取数据模式和 Tushare Token
+            self.data_mode = self.app_ctx.config.data_source.mode
+            self.tushare_token = self.app_ctx.config.data_source.tushare_token
 
             # 1.1 检查数据库是否有历史数据
             await self._check_and_init_historical_data()
@@ -155,7 +163,9 @@ class CherryQuantSystem:
             )
 
             self.market_data_manager = create_default_data_manager(
-                db_manager=self.db_manager
+                db_manager=self.db_manager,
+                data_mode=self.data_mode,
+                tushare_token=self.tushare_token,
             )
             logger.info("✅ 市场数据管理器初始化完成")
 
@@ -167,18 +177,13 @@ class CherryQuantSystem:
                         RealtimeRecorder,
                     )
 
-                    # 获取CTP配置
-                    ctp_userid = os.getenv("CTP_USERID") or os.getenv("SIMNOW_USERID")
-                    ctp_password = os.getenv("CTP_PASSWORD") or os.getenv(
-                        "SIMNOW_PASSWORD"
-                    )
-                    ctp_broker_id = os.getenv("CTP_BROKER_ID", "9999")
-                    ctp_md_address = os.getenv(
-                        "CTP_MD_ADDRESS", "tcp://180.168.146.187:10131"
-                    )
-                    ctp_td_address = os.getenv(
-                        "CTP_TD_ADDRESS", "tcp://180.168.146.187:10130"
-                    )
+                    # 获取CTP配置（来自 CherryQuantConfig.data_source）
+                    ds_cfg = self.app_ctx.config.data_source
+                    ctp_userid = ds_cfg.ctp_userid
+                    ctp_password = ds_cfg.ctp_password
+                    ctp_broker_id = ds_cfg.ctp_broker_id
+                    ctp_md_address = ds_cfg.ctp_md_address
+                    ctp_td_address = ds_cfg.ctp_td_address
 
                     if ctp_userid and ctp_password:
                         ctp_setting = {
@@ -215,11 +220,12 @@ class CherryQuantSystem:
                                     self.vnpy_gateway.disconnect()
                                     self.vnpy_gateway = None
                                 else:
-                                    # 连接成功，创建RealtimeRecorder
+                                    # 连接成功，创建RealtimeRecorder（注入 DatabaseManager）
                                     self.realtime_recorder = RealtimeRecorder(
-                                        self.vnpy_gateway
+                                        self.vnpy_gateway,
+                                        self.db_manager,
                                     )
-                                    await self.realtime_recorder.initialize()
+                                    await self.realtime_recorder.start([])  # 启动后由上层控制订阅
                                     logger.info("✅ Live模式：CTP实时记录器初始化完成")
                     else:
                         logger.warning(
@@ -241,13 +247,13 @@ class CherryQuantSystem:
             )
             logger.info("✅ AI日志系统初始化完成")
 
-            # 4. 初始化风险管理器
+            # 4. 初始化风险管理器（使用与 PortfolioRiskConfig 一致的配置）
             self.risk_manager = PortfolioRiskManager(
-                max_capital_usage=RISK_CONFIG.get("max_capital_usage", 0.8),
-                max_daily_loss=RISK_CONFIG.get("max_loss_per_day", 0.05),
-                max_drawdown=RISK_CONFIG.get("max_drawdown", 0.15),
-                max_correlation=0.7,  # 最大相关性阈值
-                max_sector_concentration=0.4,
+                max_capital_usage=risk.max_total_capital_usage,
+                max_daily_loss=risk.daily_loss_limit,
+                max_drawdown=risk.portfolio_stop_loss,
+                max_correlation=risk.max_correlation_threshold,
+                max_sector_concentration=risk.max_sector_concentration,
             )
             await self.risk_manager.start_monitoring()
             logger.info("✅ 组合风险管理器初始化完成")
@@ -262,20 +268,22 @@ class CherryQuantSystem:
             await self.alert_manager.start()
             logger.info("✅ 实时警报系统初始化完成")
 
-            # 6. 初始化代理管理器
+            # 6. 初始化代理管理器（基于 CherryQuantConfig.risk）
+            risk = self.app_ctx.config.risk
             risk_config = PortfolioRiskConfig(
-                max_total_capital_usage=0.8,
-                max_correlation_threshold=0.7,  # 最大相关性阈值
-                max_sector_concentration=0.4,
-                portfolio_stop_loss=RISK_CONFIG.get("max_drawdown", 0.15),
-                daily_loss_limit=RISK_CONFIG.get("max_loss_per_day", 0.05),
-                max_leverage_total=TRADING_CONFIG.get("default_leverage", 5.0),
+                max_total_capital_usage=risk.max_total_capital_usage,
+                max_correlation_threshold=risk.max_correlation_threshold,  # 最大相关性阈值
+                max_sector_concentration=risk.max_sector_concentration,
+                portfolio_stop_loss=risk.portfolio_stop_loss,
+                daily_loss_limit=risk.daily_loss_limit,
+                max_leverage_total=risk.max_leverage_total,
             )
 
             self.agent_manager = AgentManager(
                 db_manager=self.db_manager,
                 market_data_manager=self.market_data_manager,
                 risk_config=risk_config,
+                ai_client=self.app_ctx.ai_client,
             )
 
             # 加载策略配置
@@ -595,14 +603,15 @@ class CherryQuantSystem:
                     logger.error(f"断开VNPy网关失败: {e}")
 
             if self.market_data_manager:
-                # 关闭市场数据管理器
+                # 关闭市场数据管理器（如有需要，可在此添加清理逻辑）
                 pass
-
-            if self.db_manager:
-                await self.db_manager.close()
 
             if self.ai_logger:
                 await self.ai_logger.stop()
+
+            # 通过 AppContext 统一关闭数据库等底层资源
+            if self.app_ctx is not None:
+                await self.app_ctx.close()
 
             logger.info("✅ CherryQuant系统已安全关闭")
 
@@ -728,11 +737,13 @@ async def download_data_only(
     logger.info("📥 CherryQuant 历史数据下载工具")
     logger.info("=" * 70)
 
-    # 获取 Tushare Token
-    tushare_token = os.getenv("TUSHARE_TOKEN")
+    # 获取 Tushare Token（通过 CherryQuantConfig.data_source 统一管理）
+    from config.settings.base import CONFIG
+
+    tushare_token = CONFIG.data_source.tushare_token
     if not tushare_token or tushare_token == "your_tushare_pro_token_here":
         logger.error("❌ 错误: TUSHARE_TOKEN 未配置")
-        logger.error("请在 .env 文件中配置 TUSHARE_TOKEN")
+        logger.error("请在 .env 文件中配置 TUSHARE_TOKEN 或更新 CherryQuantConfig.data_source.tushare_token")
         return
 
     # 初始化器

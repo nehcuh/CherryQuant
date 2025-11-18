@@ -9,9 +9,12 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import asyncio
 
-from ..llm_client.openai_client import AsyncOpenAIClient
+from ..llm_client.openai_client import LLMClient
 from ..prompts.ai_selection_prompts import AI_SELECTION_SYSTEM_PROMPT, AI_SELECTION_USER_PROMPT_TEMPLATE
-from ...adapters.data_adapter.multi_symbol_manager import multi_symbol_manager
+from ...adapters.data_adapter.multi_symbol_manager import (
+    MultiSymbolDataManager,
+    multi_symbol_manager,
+)
 
 from ...adapters.data_adapter.contract_resolver import get_contract_resolver
 
@@ -20,16 +23,24 @@ logger = logging.getLogger(__name__)
 class AISelectionEngine:
     """AI品种选择和交易决策引擎"""
 
-    def __init__(self, tushare_token: Optional[str] = None, contract_resolver=None):
+    def __init__(
+        self,
+        ai_client: LLMClient,
+        tushare_token: Optional[str] = None,
+        contract_resolver=None,
+        market_data_manager: Optional[MultiSymbolDataManager] = None,
+    ):
         """初始化AI选择引擎
 
         Args:
+            ai_client: 已初始化的 LLM 客户端（通常来自 AppContext.ai_client）
             tushare_token: Tushare Pro API令牌
             contract_resolver: 合约解析器实例（可选）
+            market_data_manager: 多品种市场数据管理器（可选，未提供时使用全局实例）
         """
-        self.ai_client = AsyncOpenAIClient()
+        self.ai_client = ai_client
         self.start_time = datetime.now()
-        self.market_data_manager = multi_symbol_manager
+        self.market_data_manager: MultiSymbolDataManager = market_data_manager or multi_symbol_manager
         self.portfolio = {
             "positions": [],
             "total_value": 100000.0,
@@ -431,7 +442,7 @@ class AISelectionEngine:
 
     async def test_connection(self) -> bool:
         """测试AI连接"""
-        return await self.ai_client.test_connection_async()
+        return await self.ai_client.test_connection()
 
     def update_portfolio_position(self, action: str, symbol: str, quantity: int, price: float):
         """更新投资组合持仓"""

@@ -14,6 +14,7 @@ import os
 from .strategy_agent import StrategyAgent, StrategyConfig, AgentStatus
 from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 from config.settings.base import CONFIG
+from cherryquant.ai.llm_client.openai_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,8 @@ class AgentManager:
         self,
         db_manager: Optional[DatabaseManager] = None,
         market_data_manager: Optional[Any] = None,
-        risk_config: Optional[PortfolioRiskConfig] = None
+        risk_config: Optional[PortfolioRiskConfig] = None,
+        ai_client: Optional[LLMClient] = None,
     ):
         """初始化代理管理器
 
@@ -57,6 +59,7 @@ class AgentManager:
         """
         self.db_manager = db_manager
         self.market_data_manager = market_data_manager
+        self.ai_client = ai_client
 
         # 从配置加载风险参数
         self.risk_config = risk_config or PortfolioRiskConfig.from_config()
@@ -130,11 +133,17 @@ class AgentManager:
                 logger.warning(f"策略ID已存在: {config.strategy_id}")
                 return False
 
-            # 创建策略代理
+            # 创建策略代理（需要 LLM 客户端）
+            if self.ai_client is None:
+                raise RuntimeError(
+                    "AgentManager.ai_client 未设置；请在组合根中注入 LLMClient 实例"
+                )
+
             agent = StrategyAgent(
                 config=config,
                 db_manager=self.db_manager,
-                market_data_manager=self.market_data_manager
+                market_data_manager=self.market_data_manager,
+                ai_client=self.ai_client,
             )
 
             self.agents[config.strategy_id] = agent

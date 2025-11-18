@@ -38,7 +38,9 @@ data/cache/*.db
 
 # Test coverage
 .coverage
+.coverage.*
 htmlcov/
+coverage.xml
 .pytest_cache/
 
 # Temporary files

@@ -31,15 +31,15 @@ async def test_simple_startup():
         print(f"❌ 配置加载失败: {e}")
         test_results.append(("配置加载", False))
 
-    # 2. 测试数据库管理器
+    # 2. 测试数据库管理器（MongoDB + Redis，通过 AppContext 构建）
     try:
-        from config.database_config import get_database_config
-        from src.cherryquant.adapters.data_storage.database_manager import DatabaseManager
+        from cherryquant.bootstrap.app_context import create_app_context
 
-        db_config = get_database_config()
-        db_manager = DatabaseManager(db_config)
+        ctx = await create_app_context()
+        db_manager = ctx.db
         print("✅ 数据库管理器创建成功")
         test_results.append(("数据库管理器", True))
+        await ctx.close()
     except Exception as e:
         print(f"❌ 数据库管理器失败: {e}")
         test_results.append(("数据库管理器", False))

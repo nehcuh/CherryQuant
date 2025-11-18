@@ -18,10 +18,8 @@ from typing import Dict, List
 
 # import akshare as ak  # 已废弃，使用 QuantBox 替代
 
-from cherryquant.adapters.data_storage.database_manager import get_database_manager
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
 from cherryquant.adapters.data_adapter.multi_symbol_manager import ChineseFuturesMarket
-from config.database_config import DATABASE_CONFIG
 
 logger = logging.getLogger("data_ingestor")
 
@@ -90,30 +88,17 @@ async def ingest_once(db, exchange: str, symbol: str, ak_symbol: str) -> None:
 
 
 async def run_loop() -> None:
+    """已废弃的轮询主循环占位实现.
+
+    历史说明：原本通过 AKShare + DatabaseManager 定时拉取主力合约数据，
+    现已由 QuantBox 历史数据 + vn.py RealtimeRecorder 取代。
+    这个占位实现仅保留日志提示，避免误用旧接口。
+    """
     setup_logging()
-    logger.info("Starting data ingestor service …")
-    db = await get_database_manager(DATABASE_CONFIG)
-
-    market = ChineseFuturesMarket()
-    exchanges: Dict[str, Dict[str, str]] = market.EXCHANGE_SYMBOLS
-
-    while True:
-        try:
-            tasks = []
-            for exchange, symbols in exchanges.items():
-                count = 0
-                for sym in symbols.keys():
-                    if count >= DEFAULT_SYMBOL_LIMIT:
-                        break
-                    ak_code = _ak_code(exchange, sym)
-                    tasks.append(ingest_once(db, exchange, sym, ak_code))
-                    count += 1
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-        except Exception as e:
-            logger.error(f"Ingest loop error: {e}")
-        finally:
-            await asyncio.sleep(FETCH_INTERVAL_SECONDS)
+    logger.warning(
+        "⚠️  DataIngestor 服务已废弃，请使用 HistoryDataManager(QuantBox) 和 RealtimeRecorder(vn.py) 替代"
+    )
+    return
 
 
 def main() -> None:

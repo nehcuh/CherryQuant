@@ -76,25 +76,18 @@ class HistoryDataManager:
             self._setup_database_connections()
 
     def _setup_database_connections(self):
-        """设置数据库连接"""
-        import os
-        from dotenv import load_dotenv
+        """设置数据库连接（已弃用的PostgreSQL后备路径）
 
-        load_dotenv()
+        当前版本中，历史数据的权威来源是 QuantBox，
+        不再直接依赖 PostgreSQL 或通过环境变量读取其配置。
 
-        self.db_configs = {
-            "postgresql": {
-                "host": os.getenv("POSTGRES_HOST", "localhost"),
-                "port": int(os.getenv("POSTGRES_PORT", "5432")),
-                "database": os.getenv("POSTGRES_DB", "cherryquant"),
-                "user": os.getenv("POSTGRES_USER", "cherryquant"),
-                "password": os.getenv("POSTGRES_PASSWORD", "cherryquant123"),
-            },
-
-        }
-
+        本方法保留为兼容旧接口，占位初始化空的连接映射，
+        以便 `_get_from_legacy_system` / `_save_to_databases` 等方法
+        仍然可以安全调用而不会触发外部依赖。
+        """
+        # 不再初始化任何外部数据库连接，仅保留空配置/连接映射
+        self.db_configs = {}
         self.connections = {}
-        self._connect_databases()
 
     def _connect_databases(self):
         """连接数据库"""

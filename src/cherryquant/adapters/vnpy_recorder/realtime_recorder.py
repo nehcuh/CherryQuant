@@ -9,11 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Callable, List
 
-# 使用 MongoDB 版本的 DatabaseManager
-from cherryquant.adapters.data_storage.database_manager import (
-    get_database_manager,
-    DatabaseManager,
-)
+# 使用 MongoDB 版本的 DatabaseManager（通过依赖注入传入实例）
+from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
 from src.trading.vnpy_gateway import VNPyGateway
 
@@ -110,20 +107,20 @@ class _Aggregator:
 
 
 class RealtimeRecorder:
-    """基于 vn.py 的实时记录器：tick→多周期K线→MongoDB"""
+    """基于 vn.py 的实时记录器：tick→多周期K线→MongoDB
 
-    def __init__(self, gateway: VNPyGateway):
+    注意：不再在内部创建 DatabaseManager，而是要求调用方传入
+    已初始化好的 DatabaseManager 实例，以保持 adapters 层对配置
+    和环境变量的无感知。
+    """
+
+    def __init__(self, gateway: VNPyGateway, db: DatabaseManager):
         self.gateway = gateway
-        self.db: Optional[DatabaseManager] = None
+        self.db: DatabaseManager = db
         # symbol_key: {tf: aggregator}
         self.aggregators: Dict[str, Dict[TimeFrame, _Aggregator]] = {}
         self._tick_task: Optional[asyncio.Task] = None
         self._running = False
-
-    async def initialize(self):
-        if self.db is None:
-            # 使用新的 MongoDB DatabaseManager（自动从配置读取）
-            self.db = await get_database_manager()
 
     def _symbol_key(self, vt_symbol: str) -> (str, str):
         # 约定 vt_symbol 形如 rb2501.SHFE
@@ -145,7 +142,6 @@ class RealtimeRecorder:
             }
 
     async def start(self, vt_symbols: List[str]):
-        await self.initialize()
         self._running = True
         # 订阅市场数据
         try:

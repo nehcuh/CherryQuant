@@ -10,8 +10,6 @@ services:
     working_dir: /workspace
     volumes:
       - ./:/workspace
-      # Override DB config to use service hostnames inside the Compose network
-      - ./docker/overrides/database_config.docker.py:/workspace/config/database_config.py:ro
       # Caches to speed up repeated uv installs
       - uv_cache:/root/.cache/uv
       - pip_cache:/root/.cache/pip

@@ -5,7 +5,6 @@ CherryQuant 启动脚本
 
 import asyncio
 import logging
-import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -23,7 +22,7 @@ except Exception:  # vn.py not installed/available on macOS without CTP
     EventEngine = None  # type: ignore
     MainEngine = None  # type: ignore
 
-from config.settings.settings import TRADING_CONFIG, LOGGING_CONFIG, AI_CONFIG
+from config.settings.settings import TRADING_CONFIG, LOGGING_CONFIG
 from cherryquant.adapters.data_adapter.market_data_manager import (
     create_default_data_manager,
     create_simnow_data_manager,
@@ -31,8 +30,7 @@ from cherryquant.adapters.data_adapter.market_data_manager import (
 )
 from cherryquant.adapters.data_adapter.history_data_manager import HistoryDataManager
 from cherryquant.adapters.data_adapter.contract_resolver import ContractResolver
-from cherryquant.adapters.data_storage.database_manager import get_database_manager
-from config.database_config import get_database_config
+from cherryquant.bootstrap.app_context import create_app_context
 
 
 def setup_logging():
@@ -58,13 +56,14 @@ async def create_strategy_settings(contract_resolver: Optional[ContractResolver]
     """创建策略设置（动态解析主力合约）"""
     logger = logging.getLogger(__name__)
 
-    # 从环境变量获取品种代码（不含月份）
-    commodity = os.getenv("DEFAULT_SYMBOL", "rb2601")
+    # 从配置获取默认品种代码（不含月份），避免直接读取环境变量
+    commodity = TRADING_CONFIG.get("default_symbol", "rb2601")
     # 如果包含数字，提取品种代码
     import re
-    commodity_code = re.sub(r'\d+', '', commodity).lower()
+    commodity_code = re.sub(r"\d+", "", commodity).lower()
 
-    exchange = os.getenv("EXCHANGE", "SHFE")
+    # 默认交易所优先从配置读取，配置缺失时退化为 SHFE
+    exchange = TRADING_CONFIG.get("exchange", "SHFE")
 
     # 使用 ContractResolver 动态解析主力合约
     if contract_resolver:
@@ -91,15 +90,26 @@ async def create_strategy_settings(contract_resolver: Optional[ContractResolver]
     }
 
 
-async def setup_data_sources(db_manager=None):
-    """设置数据源"""
+async def setup_data_sources(db_manager=None, data_source_config=None):
+    """设置数据源
+
+    Args:
+        db_manager: 可选的数据库管理器实例
+        data_source_config: 数据源配置（CherryQuantConfig.data_source）。
+            当前版本中这是必需参数，不再支持从环境变量读取。
+    """
     logger = logging.getLogger(__name__)
 
-    # 读取环境变量
-    data_mode = os.getenv("DATA_MODE", "dev")
-    data_source = os.getenv("DATA_SOURCE", "tushare")
-    simnow_userid = os.getenv("SIMNOW_USERID", "") or os.getenv("CTP_USERID", "")
-    simnow_password = os.getenv("SIMNOW_PASSWORD", "") or os.getenv("CTP_PASSWORD", "")
+    if data_source_config is None:
+        raise ValueError(
+            "data_source_config 不能为空；请从 CherryQuantConfig.data_source 传入配置"
+        )
+
+    data_mode = data_source_config.mode
+    data_source = data_source_config.source
+    simnow_userid = data_source_config.ctp_userid or ""
+    simnow_password = data_source_config.ctp_password or ""
+    tushare_token = data_source_config.tushare_token
 
     logger.info(f"数据模式: {data_mode}")
     logger.info(f"配置数据源: {data_source}")
@@ -107,7 +117,11 @@ async def setup_data_sources(db_manager=None):
     ds = data_source.lower()
     if ds == "simnow" and simnow_userid and simnow_password:
         logger.info("使用Simnow/CTP数据源")
-        market_data_manager = create_simnow_data_manager(simnow_userid, simnow_password)
+        market_data_manager = create_simnow_data_manager(
+            simnow_userid,
+            simnow_password,
+            tushare_token=tushare_token,
+        )
         logger.info("正在测试Simnow连接...")
         # TODO: 实现Simnow连接测试
     elif ds == "tushare":
@@ -115,7 +129,11 @@ async def setup_data_sources(db_manager=None):
         market_data_manager = create_tushare_data_manager()
     else:
         logger.info("使用默认数据管理器")
-        market_data_manager = create_default_data_manager(db_manager=db_manager)
+        market_data_manager = create_default_data_manager(
+            db_manager=db_manager,
+            data_mode=data_mode,
+            tushare_token=tushare_token,
+        )
 
     # 测试数据源
     status = market_data_manager.get_data_sources_status()
@@ -158,31 +176,15 @@ async def update_history_data(history_manager: HistoryDataManager, symbol: str):
         logger.error(f"❌ 历史数据更新失败: {e}")
 
 
-async def test_ai_connection():
-    """测试AI连接"""
+async def test_ai_connection(ai_client, model_name: str, base_url: str) -> bool:
+    """测试AI连接（基于已注入的 LLM 客户端）"""
     logger = logging.getLogger(__name__)
     logger.info("正在测试AI连接...")
+    logger.info(f"使用模型: {model_name}")
+    logger.info(f"API地址: {base_url}")
 
     try:
-        from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
-        from config.settings.settings import AI_CONFIG
-        import os
-
-        # 显示当前配置信息
-        model_name = AI_CONFIG["model"]
-        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        logger.info(f"使用模型: {model_name}")
-        logger.info(f"API地址: {base_url}")
-
-        engine = FuturesDecisionEngine()
-        try:
-            ok = await engine.test_connection()
-        finally:
-            # 避免事件循环关闭后 httpx 异步关闭报错
-            try:
-                await engine.close()
-            except Exception:
-                pass
+        ok = await ai_client.test_connection()
 
         if ok:
             logger.info("✅ AI连接测试成功")
@@ -195,7 +197,7 @@ async def test_ai_connection():
 
     except Exception as e:
         logger.error(f"AI连接测试异常: {e}")
-        logger.error("请检查环境变量配置: OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME")
+        logger.error("请检查 AI 配置（config.settings.base.AIConfig）")
         return False
 
 
@@ -227,7 +229,7 @@ def run_backtest_mode():
         logger.error(f"回测模式启动失败: {e}")
 
 
-async def run_simulation_mode(market_data_manager, history_manager, db_manager, contract_resolver):
+async def run_simulation_mode(market_data_manager, history_manager, db_manager, ai_client, contract_resolver):
     """运行模拟交易模式"""
     logger = logging.getLogger(__name__)
     logger.info("🚀 启动CherryQuant模拟交易模式")
@@ -255,7 +257,12 @@ async def run_simulation_mode(market_data_manager, history_manager, db_manager, 
 
         # 模拟AI决策循环
         asyncio.create_task(
-            simulate_ai_trading_loop(strategy_settings, market_data_manager, db_manager)
+            simulate_ai_trading_loop(
+                strategy_settings,
+                market_data_manager,
+                db_manager,
+                ai_client,
+            )
         )
 
         logger.info("✅ CherryQuant模拟交易已启动")
@@ -272,7 +279,7 @@ async def run_simulation_mode(market_data_manager, history_manager, db_manager, 
         logger.error(f"模拟模式启动失败: {e}")
 
 
-async def simulate_ai_trading_loop(strategy_settings, market_data_manager, db_manager):
+async def simulate_ai_trading_loop(strategy_settings, market_data_manager, db_manager, ai_client):
     """模拟AI交易循环（5m 收盘对齐，限价+下一根5m失效）"""
     logger = logging.getLogger(__name__)
 
@@ -294,7 +301,9 @@ async def simulate_ai_trading_loop(strategy_settings, market_data_manager, db_ma
         from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
 
         ai_engine = FuturesDecisionEngine(
-            db_manager=db_manager, market_data_manager=market_data_manager
+            ai_client=ai_client,
+            db_manager=db_manager,
+            market_data_manager=market_data_manager,
         )
 
         while True:
@@ -534,34 +543,40 @@ async def simulate_ai_trading_loop(strategy_settings, market_data_manager, db_ma
         logger.error(f"AI交易循环启动失败: {e}")
 
 
-def main():
-    """主函数"""
-    # 设置日志
+async def async_main() -> None:
+    """异步主函数，用于启动 CherryQuant 模拟/回测/实盘流程。"""
     logger = setup_logging()
     logger.info("🍒 CherryQuant AI期货交易系统启动")
     logger.info(f"📅 启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+    # 运行模式选择
+    if len(sys.argv) > 1:
+        mode = sys.argv[1].lower()
+    else:
+        mode = "simulation"  # 默认模拟模式
+
+    logger.info("🔍 检查系统状态...")
+
+    # 1. 构建应用上下文（配置 + MongoDB + Redis + AI 客户端）
+    ctx = await create_app_context()
+    logger.info("✅ 数据库管理器初始化完成")
+
     try:
-        # 运行模式选择
-        if len(sys.argv) > 1:
-            mode = sys.argv[1].lower()
-        else:
-            mode = "simulation"  # 默认模拟模式
-
-        # 检查系统状态
-        logger.info("🔍 检查系统状态...")
-
-        # 1. 初始化数据库（需要在setup_data_sources之前，以便Live模式使用）
-        db_manager = asyncio.run(get_database_manager())
-        logger.info("✅ 数据库管理器初始化完成")
-
         # 2. 测试AI连接
-        ai_ok = asyncio.run(test_ai_connection())
+        ai_cfg = ctx.config.ai
+        ai_ok = await test_ai_connection(
+            ai_client=ctx.ai_client,
+            model_name=ai_cfg.model,
+            base_url=ai_cfg.base_url,
+        )
         if not ai_ok:
             logger.warning("⚠️ AI连接失败，将继续以占位/无AI方式运行模拟循环")
 
-        # 3. 设置数据源（传递db_manager以支持Live模式）
-        market_data_manager = asyncio.run(setup_data_sources(db_manager=db_manager))
+        # 3. 设置数据源（传递 db_manager 和集中配置以支持 Live/Dev 模式）
+        market_data_manager = await setup_data_sources(
+            db_manager=ctx.db,
+            data_source_config=ctx.config.data_source,
+        )
         if not market_data_manager:
             logger.error("❌ 数据源设置失败")
             return
@@ -570,34 +585,50 @@ def main():
         history_manager = setup_history_data()
 
         # 5. 初始化合约解析器（用于动态获取主力合约）
-        tushare_token = os.getenv("TUSHARE_TOKEN")
+        tushare_token = ctx.config.data_source.tushare_token
         contract_resolver = ContractResolver(tushare_token)
         logger.info("✅ 合约解析器初始化完成")
 
         logger.info("✅ 系统检查通过")
 
-        # 启动对应模式
+        # 6. 启动对应模式
         if mode == "backtest":
             run_backtest_mode()
         elif mode == "simulation":
-            asyncio.run(
-                run_simulation_mode(market_data_manager, history_manager, db_manager, contract_resolver)
+            await run_simulation_mode(
+                market_data_manager,
+                history_manager,
+                ctx.db,
+                ctx.ai_client,
+                contract_resolver,
             )
         elif mode == "live":
             logger.warning("⚠️  实盘模式尚未完全实现")
             logger.info("请使用模拟模式进行测试")
-            asyncio.run(
-                run_simulation_mode(market_data_manager, history_manager, db_manager, contract_resolver)
+            await run_simulation_mode(
+                market_data_manager,
+                history_manager,
+                ctx.db,
+                ctx.ai_client,
+                contract_resolver,
             )
         else:
             logger.error(f"❌ 未知模式: {mode}")
             logger.info("可用模式: simulation, backtest, live")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"❌ 系统启动失败: {e}")
         import traceback
 
         logger.error(traceback.format_exc())
+    finally:
+        # 确保关闭数据库和连接资源
+        await ctx.close()
+
+
+def main() -> None:
+    """同步入口，封装异步主函数。"""
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":

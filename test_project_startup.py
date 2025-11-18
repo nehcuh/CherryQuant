@@ -29,15 +29,14 @@ async def test_database_connections():
     print("-" * 40)
 
     try:
-        # 测试 PostgreSQL/Redis 连接
-        from config.database_config import get_database_config
-        from src.cherryquant.adapters.data_storage.database_manager import DatabaseManager, DatabaseConfig
+        # 测试 MongoDB/Redis 配置（通过 CherryQuantConfig）
+        from config.settings.base import CONFIG
 
-        db_config = get_database_config()
-        print(f"📊 PostgreSQL 配置: {db_config.postgres_host}:{db_config.postgres_port}/{db_config.postgres_db}")
-        print(f"🗄️  Redis 配置: {db_config.redis_host}:{db_config.redis_port}/{db_config.redis_db}")
+        db_cfg = CONFIG.database
+        print(f"📊 MongoDB 配置: {db_cfg.mongodb_uri}/{db_cfg.mongodb_database}")
+        print(f"🗄️  Redis 配置: {db_cfg.redis_host}:{db_cfg.redis_port}/{db_cfg.redis_db}")
 
-        # 注意：这里不实际连接，只验证配置
+        # 注意：这里不实际建立连接，只验证配置加载
         print("✅ 数据库配置加载成功")
 
     except Exception as e:
@@ -160,16 +159,15 @@ async def test_startup_sequence():
     try:
         # 模拟 run_cherryquant_complete.py 的启动过程
         print("1. 初始化数据库管理器...")
-        from config.database_config import get_database_config
-        from src.cherryquant.adapters.data_storage.database_manager import DatabaseManager
+        from cherryquant.bootstrap.app_context import create_app_context
 
-        db_config = get_database_config()
-        db_manager = DatabaseManager(db_config)
+        ctx = await create_app_context()
+        db_manager = ctx.db
         print("   ✅ 数据库管理器初始化完成")
 
         print("2. 初始化市场数据管理器...")
         from src.cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
-        market_data_manager = MarketDataManager()
+        market_data_manager = MarketDataManager(db_manager=db_manager)
         print("   ✅ 市场数据管理器初始化完成")
 
         print("3. 初始化历史数据管理器...")
@@ -183,6 +181,8 @@ async def test_startup_sequence():
         print(f"   📊 QuantBox 集成: {history_status['quantbox_integration']}")
         print(f"   📈 历史数据管理器: {history_status['history_data_manager']}")
 
+        # 关闭上下文
+        await ctx.close()
         return True
 
     except Exception as e:

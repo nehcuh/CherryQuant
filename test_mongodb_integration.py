@@ -5,7 +5,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from cherryquant.adapters.data_storage.database_manager import get_database_manager
+from cherryquant.bootstrap.app_context import create_app_context
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
 
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +20,8 @@ async def test_mongodb_integration():
     try:
         # 1. 连接数据库
         logger.info("\n[1/5] 测试数据库连接...")
-        db_manager = await get_database_manager()
+        ctx = await create_app_context()
+        db_manager = ctx.db
         logger.info("✅ 数据库连接成功")
 
         # 2. 测试写入数据
@@ -72,7 +73,7 @@ async def test_mongodb_integration():
             logger.info(f"   - {col}")
 
         # 关闭连接
-        await db_manager.close()
+        await ctx.close()
         logger.info("\n✅ 数据库连接已关闭")
 
         logger.info("\n" + "=" * 60)

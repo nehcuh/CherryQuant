@@ -8,6 +8,7 @@ from .base import CONFIG, CherryQuantConfig
 # 向后兼容的设置 - 保持与原有代码的兼容性
 TRADING_CONFIG = {
     "default_symbol": CONFIG.trading.default_symbol,
+    "exchange": CONFIG.trading.exchange,
     "decision_interval": CONFIG.trading.decision_interval,
     "max_position_size": CONFIG.trading.max_position_size,
     "default_leverage": CONFIG.trading.default_leverage,

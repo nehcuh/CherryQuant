@@ -9,6 +9,8 @@ from typing import Dict, Any
 import logging
 from dotenv import load_dotenv
 
+from config.settings.base import CherryQuantConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,24 +43,24 @@ class QuantBoxConfigSynchronizer:
             logger.warning(f"⚠ .env file not found: {self.env_file}")
 
     def read_cherryquant_config(self) -> Dict[str, Any]:
-        """
-        从环境变量读取 CherryQuant 配置
+        """从 CherryQuantConfig 读取 QuantBox 所需配置
 
         Returns:
-            配置字典
+            配置字典（Tushare + MongoDB）
         """
-        config = {
+        # 通过 CherryQuantConfig 统一加载配置（尊重 .env / 环境变量）
+        cfg = CherryQuantConfig.from_env()
+
+        return {
             # Tushare 配置
-            "tushare_token": os.getenv("TUSHARE_TOKEN", ""),
+            "tushare_token": cfg.data_source.tushare_token or "",
 
             # MongoDB 配置
-            "mongodb_uri": os.getenv("MONGODB_URI", "mongodb://localhost:27017"),
-            "mongodb_database": os.getenv("MONGODB_DATABASE", "cherryquant"),
-            "mongodb_username": os.getenv("MONGODB_USERNAME", ""),
-            "mongodb_password": os.getenv("MONGODB_PASSWORD", ""),
+            "mongodb_uri": cfg.database.mongodb_uri,
+            "mongodb_database": cfg.database.mongodb_database,
+            "mongodb_username": cfg.database.mongodb_username or "",
+            "mongodb_password": cfg.database.mongodb_password or "",
         }
-
-        return config
 
     def generate_quantbox_config(self) -> Dict[str, Any]:
         """

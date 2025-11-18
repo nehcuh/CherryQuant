@@ -18,95 +18,43 @@ from bson import ObjectId, Decimal128
 import redis.asyncio as aioredis
 
 from .timeframe_data_manager import TimeFrame, MarketDataPoint, TechnicalIndicators
-from .mongodb_manager import MongoDBConnectionManager, get_mongodb_manager
+from .mongodb_manager import MongoDBConnectionManager
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class DatabaseConfig:
-    """数据库配置（MongoDB 版本）"""
-    # MongoDB 配置
-    mongodb_uri: str = "mongodb://localhost:27017"
-    mongodb_database: str = "cherryquant"
-    mongodb_min_pool_size: int = 5
-    mongodb_max_pool_size: int = 50
-    mongodb_username: Optional[str] = None
-    mongodb_password: Optional[str] = None
-
-    # Redis 配置
-    redis_host: str = "localhost"
-    redis_port: int = 6379
-    redis_db: int = 0
-    redis_password: Optional[str] = None
-
-    # 缓存配置
-    cache_ttl: int = 300  # 5分钟
-
-    # 向后兼容（兼容旧的 PostgreSQL 配置名称）
-    @classmethod
-    def from_postgres_config(cls, postgres_host=None, postgres_port=None, **kwargs):
-        """从旧的 PostgreSQL 配置创建（向后兼容）"""
-        logger.warning("⚠️  检测到 PostgreSQL 配置，已自动转换为 MongoDB 配置")
-        return cls(**kwargs)
-
-
 class DatabaseManager:
-    """CherryQuant 数据库管理器 (MongoDB 版本)"""
+    """CherryQuant 数据库管理器 (MongoDB 版本)
 
-    def __init__(self, config: DatabaseConfig):
-        """
-        初始化数据库管理器
+    NOTE: 该类不再负责读取环境变量或加载配置，而是依赖调用方
+    显式传入已经初始化好的 MongoDBConnectionManager 和 Redis 客户端。
+    这让配置管理集中在 config/ 与启动脚本（组合根）中，更利于教学和维护。
+    """
+
+    def __init__(
+        self,
+        mongodb_manager: MongoDBConnectionManager,
+        redis_client: aioredis.Redis,
+        cache_ttl: int = 300,
+        cache_prefix: str = "cherryquant:",
+    ) -> None:
+        """初始化数据库管理器.
 
         Args:
-            config: 数据库配置
+            mongodb_manager: 已连接的 MongoDB 连接管理器
+            redis_client: 已初始化的 Redis 异步客户端
+            cache_ttl: 默认缓存 TTL（秒）
+            cache_prefix: Redis 缓存键前缀
         """
-        self.config = config
-        self.mongodb_manager: Optional[MongoDBConnectionManager] = None
-        self.redis_client: Optional[aioredis.Redis] = None
+        self.mongodb_manager = mongodb_manager
+        self.redis_client = redis_client
 
         # 缓存配置
-        self.cache_ttl = config.cache_ttl
-        self.cache_prefix = "cherryquant:"
+        self.cache_ttl = cache_ttl
+        self.cache_prefix = cache_prefix
 
-    async def initialize(self):
-        """初始化所有数据库连接"""
-        try:
-            # 初始化 MongoDB
-            self.mongodb_manager = await get_mongodb_manager(
-                uri=self.config.mongodb_uri,
-                database=self.config.mongodb_database,
-                min_pool_size=self.config.mongodb_min_pool_size,
-                max_pool_size=self.config.mongodb_max_pool_size,
-                username=self.config.mongodb_username,
-                password=self.config.mongodb_password
-            )
-
-            # 初始化 Redis
-            await self._connect_redis()
-
-            logger.info("✅ 数据库连接初始化完成 (MongoDB)")
-        except Exception as e:
-            logger.error(f"❌ 数据库初始化失败: {e}")
-            await self.close()
-            raise
-
-    async def _connect_redis(self):
-        """连接Redis缓存"""
-        try:
-            redis_url = f"redis://{self.config.redis_host}:{self.config.redis_port}"
-            if self.config.redis_password:
-                redis_url = f"redis://:{self.config.redis_password}@{self.config.redis_host}:{self.config.redis_port}"
-
-            self.redis_client = aioredis.from_url(
-                redis_url,
-                db=self.config.redis_db,
-                decode_responses=True
-            )
-            logger.info("✅ Redis连接成功")
-        except Exception as e:
-            logger.error(f"❌ Redis连接失败: {e}")
-            raise
+    # 过去的 initialize/_connect_redis 逻辑已移至组合根（AppContext）中，
+    # 这里不再负责创建连接，只假设传入的 mongodb_manager / redis_client 可用。
 
     # ==================== 市场数据管理 ====================
 
@@ -486,19 +434,7 @@ class DatabaseManager:
         status: Optional[str] = None,
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """
-        获取AI决策记录
-
-        Args:
-            symbol: 合约代码（可选）
-            start_time: 开始时间（可选）
-            end_time: 结束时间（可选）
-            status: 状态过滤（可选）
-            limit: 返回条数限制（可选）
-
-        Returns:
-            决策记录列表
-        """
+        """Get AI decision records from the MongoDB collection."""
         try:
             collection = self.mongodb_manager.get_collection("ai_decisions")
 
@@ -562,18 +498,7 @@ class DatabaseManager:
         executed_at: Optional[datetime] = None,
         execution_price: Optional[float] = None
     ) -> bool:
-        """
-        更新AI决策状态
-
-        Args:
-            decision_id: 决策ID
-            status: 新状态
-            executed_at: 执行时间（可选）
-            execution_price: 执行价格（可选）
-
-        Returns:
-            是否成功
-        """
+        """Update the status of an AI decision document."""
         try:
             collection = self.mongodb_manager.get_collection("ai_decisions")
 
@@ -1009,36 +934,3 @@ class DatabaseManager:
             logger.info("✅ 数据库连接已关闭 (MongoDB)")
         except Exception as e:
             logger.error(f"关闭数据库连接失败: {e}")
-
-
-# 便捷函数
-async def get_database_manager(config: DatabaseConfig = None) -> DatabaseManager:
-    """
-    获取数据库管理器实例
-
-    Args:
-        config: 数据库配置
-
-    Returns:
-        数据库管理器实例
-    """
-    if config is None:
-        # 从配置文件读取
-        from config.settings.base import CONFIG
-        config = DatabaseConfig(
-            mongodb_uri=CONFIG.database.mongodb_uri,
-            mongodb_database=CONFIG.database.mongodb_database,
-            mongodb_min_pool_size=CONFIG.database.mongodb_min_pool_size,
-            mongodb_max_pool_size=CONFIG.database.mongodb_max_pool_size,
-            mongodb_username=CONFIG.database.mongodb_username,
-            mongodb_password=CONFIG.database.mongodb_password,
-            redis_host=CONFIG.database.redis_host,
-            redis_port=CONFIG.database.redis_port,
-            redis_db=CONFIG.database.redis_db,
-            redis_password=CONFIG.database.redis_password,
-            cache_ttl=CONFIG.database.cache_ttl
-        )
-
-    manager = DatabaseManager(config)
-    await manager.initialize()
-    return manager

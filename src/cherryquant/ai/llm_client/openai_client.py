@@ -3,16 +3,15 @@ OpenAI客户端封装
 用于调用GPT模型进行交易决策
 """
 
-import os
 import json
 import asyncio
 import re
 from typing import Dict, Any, Optional, Protocol
+
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
 import logging
 
-load_dotenv()
+from config.settings.base import AIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -37,24 +36,38 @@ class LLMClient(Protocol):
 
 
 class AsyncOpenAIClient:
-    """异步OpenAI客户端类"""
+    """异步OpenAI客户端类
 
-    def __init__(self):
-        """初始化OpenAI客户端"""
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        self.model = os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "gpt-4"
+    注意：该客户端不再直接读取环境变量，而是依赖上层注入
+    已解析好的 :class:`AIConfig` 对象（通常来自 CherryQuantConfig.ai），
+    以保持配置管理的集中与清晰。
+    """
+
+    def __init__(self, config: AIConfig, requests_per_minute: int = 30) -> None:
+        """初始化OpenAI客户端
+
+        Args:
+            config: AIConfig 配置对象
+            requests_per_minute: 简单速率限制参数（每分钟最大请求数）
+        """
+        self.config = config
+        self.api_key = config.api_key
+        self.base_url = config.base_url
+        self.model = config.model or "gpt-4"
+
         # 可配置的超时、重试与限速
-        self.timeout = int(os.getenv("OPENAI_TIMEOUT", os.getenv("API_TIMEOUT", "30")))
-        self.max_retries = int(os.getenv("OPENAI_MAX_RETRIES", os.getenv("MAX_RETRIES", "3")))
-        self.requests_per_minute = int(os.getenv("OPENAI_REQUESTS_PER_MINUTE", "30"))
-        self._min_interval = 60.0 / self.requests_per_minute if self.requests_per_minute > 0 else 0.0
+        self.timeout = int(config.timeout)
+        self.max_retries = int(config.max_retries)
+        self.requests_per_minute = int(requests_per_minute)
+        self._min_interval = (
+            60.0 / self.requests_per_minute if self.requests_per_minute > 0 else 0.0
+        )
         self._last_request_time = 0.0
 
         # 允许无密钥初始化（演示/测试降级），在调用时再做可用性判断
         if not self.api_key:
             self.client = None
-            logger.info("OPENAI_API_KEY 未设置，将使用降级/模拟模式")
+            logger.info("AIConfig.api_key 未设置，将使用降级/模拟模式")
         else:
             self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         self._closed = False
@@ -279,8 +292,9 @@ class AsyncOpenAIClient:
 class OpenAIClient:
     """同步OpenAI客户端类（保留向后兼容）"""
 
-    def __init__(self):
-        self.async_client = AsyncOpenAIClient()
+    def __init__(self, config: AIConfig) -> None:
+        """使用给定的 AIConfig 初始化同步客户端包装器"""
+        self.async_client = AsyncOpenAIClient(config=config)
 
     def get_trading_decision(
         self,

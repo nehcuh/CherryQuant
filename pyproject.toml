@@ -10,7 +10,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
     "vnpy>=4.1.0",
-    "vnpy-ctp @ file:///Users/huchen/Projects/CherryQuant/vnpy_ctp-6.7.7.2",
+    "vnpy-ctp",
     "vnpy-ctastrategy>=1.0.0",
     "pandas>=2.3.3",
     "numpy>=2.3.4",
@@ -31,8 +31,12 @@ dependencies = [
     # Cache
     "aioredis>=2.0.1",
     "redis>=7.0.1",
+    # Logging
+    "structlog>=24.1.0",
+    "python-json-logger>=2.0.7",
     # QuantBox for high-performance data management (replaces AKShare)
     "quantbox-cn @ file:///Users/huchen/Projects/quantbox",
+    "pydantic-settings>=2.12.0",
 ]
 authors = [
     {name = "CherryQuant Team", email = "team@cherryquant.ai"}
@@ -62,6 +66,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.uv.sources]
+"vnpy-ctp" = { path = "third_party/vnpy_ctp-6.7.7.2" }
 
 [dependency-groups]
 dev = [
