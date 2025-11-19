@@ -236,6 +236,13 @@
             </div>
         </div>
 
+        <div class="section">
+            <h2>🎯 策略执行对比（模拟 vs 实盘）</h2>
+            <div id="execution-compare">
+                <div class="loading">点击上方任意策略卡片，查看该策略的模拟交易与实盘执行统计...</div>
+            </div>
+        </div>
+
         <div class="footer">
             <a href="/docs" target="_blank">📖 API 文档</a>
             <a href="/api/v1/status" target="_blank">🔍 系统状态 API</a>
@@ -317,7 +324,7 @@
                 }
 
                 const strategiesHtml = data.strategies.map(strategy => `
-                    <div class="strategy-item">
+                    <div class="strategy-item" data-strategy-id="${strategy.strategy_id}">
                         <div class="strategy-header">
                             <span class="strategy-name">${strategy.name}</span>
                             <span class="status-badge ${strategy.status}">${strategy.status}</span>
@@ -347,10 +354,254 @@
 
                 document.getElementById('strategies').innerHTML = strategiesHtml;
 
+                attachStrategyClickHandlers();
+
             } catch (error) {
                 document.getElementById('strategies').innerHTML =
                     '<div class="error">⚠️ 无法加载策略信息: ' + error.message + '</div>';
             }
+        }
+
+        async function loadStrategyExecutions(strategyId) {
+            const container = document.getElementById('execution-compare');
+            container.innerHTML = '<div class="loading">正在加载策略执行信息...</div>';
+
+            try {
+                const resp = await fetch(`/api/v1/strategies/${strategyId}/executions`);
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+                const data = await resp.json();
+                const sim = data.recent_trades || [];
+                const live = data.live_executions || [];
+                const simPnlLast = data.sim_pnl_last;
+                const livePnlLast = data.live_pnl_last;
+                const pnlDiff = data.pnl_diff;
+
+                const diffColor = pnlDiff == null ? '#4b5563' : (pnlDiff >= 0 ? '#10b981' : '#ef4444');
+
+                const html = `
+                    <div class="strategy-metrics">
+                        <div class="metric">
+                            <span class="label">策略 ID:</span>
+                            <span class="value">${data.strategy_id}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">模拟交易笔数 (recent_trades):</span>
+                            <span class="value">${sim.length}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">实盘执行笔数 (live_executions):</span>
+                            <span class="value">${live.length}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">模拟累计 PnL:</span>
+                            <span class="value">${simPnlLast == null ? '-' : formatNumber(simPnlLast, 0)}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">实盘累计 PnL:</span>
+                            <span class="value">${livePnlLast == null ? '-' : formatNumber(livePnlLast, 0)}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">PnL 差值 (实盘 - 模拟):</span>
+                            <span class="value" style="color: ${diffColor};">
+                                ${pnlDiff == null ? '-' : formatNumber(pnlDiff, 0)}
+                            </span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; font-size: 0.9em; color: #4b5563;">
+                        <strong>最近模拟交易：</strong><br/>
+                        ${sim.slice(-3).map(t => `
+                            · ${t.timestamp || t.entry_time || '-'} | ${t.symbol} | ${t.direction || '-'} | 数量: ${t.quantity || '-'}
+                        `).join('<br/>') || '(无记录)'}
+                        <br/><br/>
+                        <strong>最近实盘执行：</strong><br/>
+                        ${live.slice(-3).map(e => `
+                            · ${e.timestamp || '-'} | ${e.symbol || '-'} | ${e.direction || '-'} | 数量: ${e.volume || '-'} @ ${e.price || '-'}
+                        `).join('<br/>') || '(无记录)'}
+                    </div>
+                    <div style="margin-top: 12px; display: flex; align-items: center; gap: 12px; font-size: 0.85em; color: #4b5563;">
+                        <label>时间范围:
+                            <select id="pnl-range-select" style="margin-left: 4px; padding: 2px 6px; font-size: 0.85em;">
+                                <option value="all">全部</option>
+                                <option value="30m">最近 30 分钟</option>
+                                <option value="2h">最近 2 小时</option>
+                                <option value="1d">最近 1 天</option>
+                            </select>
+                        </label>
+                        <label><input type="checkbox" id="pnl-show-sim" checked> 显示模拟 PnL</label>
+                        <label><input type="checkbox" id="pnl-show-live" checked> 显示实盘 PnL</label>
+                    </div>
+                    <div id="pnl-chart" style="margin-top: 8px;"></div>
+                    <div style="margin-top: 10px; font-size: 0.85em; color: #6b7280;">
+                        提示：模拟交易来自 StrategyAgent 内部账本，实盘执行来自 KLineOrderManager 的订单回报，
+                        两者数量和时间可能存在差异，可用于课堂讨论“模型预期 vs 市场实际”。
+                    </div>
+                `;
+
+                container.innerHTML = html;
+                setupPnlControls(data.sim_pnl || [], data.live_pnl || []);
+            } catch (error) {
+                container.innerHTML = '<div class="error">⚠️ 无法加载策略执行信息: ' + error.message + '</div>';
+            }
+        }
+
+        let currentPnlData = { sim: [], live: [] };
+        let currentPnlOptions = { range: 'all', showSim: true, showLive: true };
+
+        function attachStrategyClickHandlers() {
+            const items = document.querySelectorAll('.strategy-item');
+            items.forEach(item => {
+                item.addEventListener('click', () => {
+                    const strategyId = item.getAttribute('data-strategy-id');
+                    if (strategyId) {
+                        loadStrategyExecutions(strategyId);
+                    }
+                });
+            });
+        }
+
+        function setupPnlControls(simPnl, livePnl) {
+            currentPnlData = { sim: simPnl || [], live: livePnl || [] };
+            currentPnlOptions = { range: 'all', showSim: true, showLive: true };
+
+            const rangeSelect = document.getElementById('pnl-range-select');
+            const cbSim = document.getElementById('pnl-show-sim');
+            const cbLive = document.getElementById('pnl-show-live');
+
+            if (!rangeSelect || !cbSim || !cbLive) {
+                renderPnlChart();
+                return;
+            }
+
+            rangeSelect.value = 'all';
+            cbSim.checked = true;
+            cbLive.checked = true;
+
+            rangeSelect.onchange = () => {
+                currentPnlOptions.range = rangeSelect.value;
+                renderPnlChart();
+            };
+            cbSim.onchange = () => {
+                currentPnlOptions.showSim = cbSim.checked;
+                renderPnlChart();
+            };
+            cbLive.onchange = () => {
+                currentPnlOptions.showLive = cbLive.checked;
+                renderPnlChart();
+            };
+
+            renderPnlChart();
+        }
+
+        function renderPnlChart(simPnl, livePnl) {
+            if (simPnl !== undefined && livePnl !== undefined) {
+                // 允许在首次调用时直接传入数据
+                currentPnlData = { sim: simPnl || [], live: livePnl || [] };
+                currentPnlOptions = { range: 'all', showSim: true, showLive: true };
+            }
+
+            const container = document.getElementById('pnl-chart');
+            if (!container) return;
+
+            const hasSim = Array.isArray(currentPnlData.sim) && currentPnlData.sim.length > 0;
+            const hasLive = Array.isArray(currentPnlData.live) && currentPnlData.live.length > 0;
+            if (!hasSim && !hasLive) {
+                container.innerHTML = '<div class="loading">暂时没有 PnL 曲线数据</div>';
+                return;
+            }
+
+            function normalize(series) {
+                return (series || []).map(p => {
+                    const t = new Date(p.timestamp).getTime();
+                    const v = Number(p.cum_pnl || 0);
+                    if (isNaN(t) || isNaN(v)) return null;
+                    return { t, v };
+                }).filter(Boolean);
+            }
+
+            // 归一化并应用时间窗口 & 显示开关
+            let sim = hasSim && currentPnlOptions.showSim ? normalize(currentPnlData.sim) : [];
+            let live = hasLive && currentPnlOptions.showLive ? normalize(currentPnlData.live) : [];
+
+            // 应用时间范围过滤（基于最新时间点）
+            const combined = sim.concat(live);
+            if (combined.length === 0) {
+                container.innerHTML = '<div class="loading">暂时没有 PnL 曲线数据</div>';
+                return;
+            }
+
+            const maxGlobalT = Math.max.apply(null, combined.map(p => p.t));
+            let windowMs = null;
+            if (currentPnlOptions.range === '30m') {
+                windowMs = 30 * 60 * 1000;
+            } else if (currentPnlOptions.range === '2h') {
+                windowMs = 2 * 60 * 60 * 1000;
+            } else if (currentPnlOptions.range === '1d') {
+                windowMs = 24 * 60 * 60 * 1000;
+            }
+            if (windowMs !== null) {
+                const cutoff = maxGlobalT - windowMs;
+                sim = sim.filter(p => p.t >= cutoff);
+                live = live.filter(p => p.t >= cutoff);
+            }
+
+            if (sim.length === 0 && live.length === 0) {
+                container.innerHTML = '<div class="loading">所选时间范围内暂无 PnL 数据</div>';
+                return;
+            }
+
+            const all = sim.concat(live);
+            if (sim.length === 0 && live.length === 0) {
+                container.innerHTML = '<div class="loading">暂时没有 PnL 曲线数据</div>';
+                return;
+            }
+
+            const all = sim.concat(live);
+            let minT = Math.min.apply(null, all.map(p => p.t));
+            let maxT = Math.max.apply(null, all.map(p => p.t));
+            let minV = Math.min.apply(null, all.map(p => p.v));
+            let maxV = Math.max.apply(null, all.map(p => p.v));
+
+            if (minT === maxT) {
+                minT -= 60 * 1000;
+                maxT += 60 * 1000;
+            }
+            if (minV === maxV) {
+                minV -= 1;
+                maxV += 1;
+            }
+
+            const w = 400;
+            const h = 120;
+            const pad = 20;
+
+            function buildPath(series) {
+                if (!series || series.length === 0) return '';
+                return series.map((p, idx) => {
+                    const xRatio = (p.t - minT) / (maxT - minT || 1);
+                    const yRatio = (p.v - minV) / (maxV - minV || 1);
+                    const x = pad + xRatio * (w - 2 * pad);
+                    const y = (h - pad) - yRatio * (h - 2 * pad);
+                    return (idx === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1);
+                }).join(' ');
+            }
+
+            const simPath = buildPath(sim);
+            const livePath = buildPath(live);
+
+            const svg = `
+                <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+                    <rect x="0" y="0" width="${w}" height="${h}" fill="#f9fafb" />
+                    <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#e5e7eb" stroke-width="1" />
+                    ${simPath ? `<path d="${simPath}" fill="none" stroke="#3b82f6" stroke-width="1.8" />` : ''}
+                    ${livePath ? `<path d="${livePath}" fill="none" stroke="#f97316" stroke-width="1.8" />` : ''}
+                    <text x="${pad}" y="${pad}" fill="#4b5563" font-size="10">Sim PnL</text>
+                    <text x="${pad + 70}" y="${pad}" fill="#4b5563" font-size="10">Live PnL</text>
+                </svg>
+            `;
+
+            container.innerHTML = svg;
         }
 
         // 加载系统信息

@@ -49,6 +49,8 @@ class AgentManager:
         market_data_manager: Optional[Any] = None,
         risk_config: Optional[PortfolioRiskConfig] = None,
         ai_client: Optional[LLMClient] = None,
+        order_manager: Optional[Any] = None,
+        enable_live_trading: bool = False,
     ):
         """初始化代理管理器
 
@@ -56,10 +58,19 @@ class AgentManager:
             db_manager: 数据库管理器
             market_data_manager: 市场数据管理器
             risk_config: 组合风险配置（如不提供，从全局 CONFIG 读取）
+            ai_client: LLM 客户端实例
+            order_manager: 全局订单管理器（如 KLineOrderManager），用于实盘下单
+            enable_live_trading: 是否启用实盘模式，将通过订单管理器发送真实订单
         """
         self.db_manager = db_manager
         self.market_data_manager = market_data_manager
         self.ai_client = ai_client
+        self.order_manager = order_manager
+        self.enable_live_trading = bool(enable_live_trading and order_manager is not None)
+        if enable_live_trading and order_manager is None:
+            logger.warning(
+                "AgentManager: enable_live_trading=True 但未提供 order_manager，将退回为纯模拟模式"
+            )
 
         # 从配置加载风险参数
         self.risk_config = risk_config or PortfolioRiskConfig.from_config()
@@ -83,6 +94,18 @@ class AgentManager:
         self.portfolio_value = 0.0
         self.daily_pnl = 0.0
         self.daily_trades = 0
+
+        # 实盘执行记录（从 KLineOrderManager 回调聚合）
+        self.live_executions: Dict[str, List[Dict[str, Any]]] = {}
+        # 单个策略保留的最近实盘执行记录条数（滚动窗口，避免内存无限增长）
+        self._max_live_executions_per_strategy: int = 500
+
+        # 若有订单管理器，注册成交回调
+        if self.order_manager:
+            try:
+                self.order_manager.register_execution_callback(self._on_execution_update)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"注册订单执行回调失败: {e}")
 
         logger.info("代理管理器初始化完成")
 
@@ -144,6 +167,8 @@ class AgentManager:
                 db_manager=self.db_manager,
                 market_data_manager=self.market_data_manager,
                 ai_client=self.ai_client,
+                order_manager=self.order_manager,
+                enable_live_trading=self.enable_live_trading,
             )
 
             self.agents[config.strategy_id] = agent
@@ -319,6 +344,42 @@ class AgentManager:
             except Exception as e:
                 logger.error(f"状态更新出错: {e}")
                 await asyncio.sleep(30)
+
+    async def _on_execution_update(self, execution: Any) -> None:
+        """接收来自 KLineOrderManager 的成交回调，按策略聚合实盘执行记录。
+
+        当前实现仅做记录与日志，不修改 StrategyAgent 内部的模拟账户状态，
+        方便教学时对比“期望成交 vs 实际成交”。
+        """
+        try:
+            strategy_id = getattr(execution, "strategy_id", None)
+            symbol = getattr(execution, "symbol", None)
+            if not strategy_id:
+                logger.debug("Execution update 缺少 strategy_id，忽略")
+                return
+
+            record = {
+                "execution_id": getattr(execution, "execution_id", None),
+                "order_id": getattr(execution, "order_id", None),
+                "symbol": symbol,
+                "direction": getattr(getattr(execution, "direction", None), "value", None),
+                "volume": getattr(execution, "volume", None),
+                "price": getattr(execution, "price", None),
+                "timestamp": getattr(execution, "timestamp", None),
+                "commission": getattr(execution, "commission", None),
+            }
+            records = self.live_executions.setdefault(strategy_id, [])
+            records.append(record)
+            if len(records) > self._max_live_executions_per_strategy:
+                # 仅保留最近 N 条
+                del records[: -self._max_live_executions_per_strategy]
+
+            logger.info(
+                f"记录实盘成交: strategy={strategy_id}, symbol={symbol}, "
+                f"volume={record['volume']}, price={record['price']}"
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"处理订单执行回调失败: {e}")
 
     async def _update_portfolio_stats(self) -> None:
         """更新组合统计"""
@@ -590,6 +651,7 @@ class AgentManager:
             "config": asdict(agent.config),
             "positions": positions,
             "recent_trades": recent_trades,
+            "live_executions": self.live_executions.get(strategy_id, []),
         })
 
         return status

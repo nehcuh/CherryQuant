@@ -31,10 +31,18 @@ class Status(enum.Enum):
     CANCELLED = "cancelled"
     REJECTED = "rejected"
 
+class Exchange(enum.Enum):
+    SHFE = "SHFE"
+    DCE = "DCE"
+    CZCE = "CZCE"
+    CFFEX = "CFFEX"
+    INE = "INE"
+
 m_vnp_trader_constant.Direction = Direction
 m_vnp_trader_constant.OrderType = OrderType
 m_vnp_trader_constant.Offset = Offset
 m_vnp_trader_constant.Status = Status
+m_vnp_trader_constant.Exchange = Exchange
 
 # vnpy.event
 m_vnp_event = types.ModuleType("vnpy.event")
@@ -77,6 +85,7 @@ class AccountData: pass
 class ContractData: pass
 class OrderRequest: pass
 class CancelRequest: pass
+class SubscribeRequest: pass
 
 m_vnp_trader_object.TickData = TickData
 m_vnp_trader_object.BarData = BarData
@@ -87,6 +96,7 @@ m_vnp_trader_object.AccountData = AccountData
 m_vnp_trader_object.ContractData = ContractData
 m_vnp_trader_object.OrderRequest = OrderRequest
 m_vnp_trader_object.CancelRequest = CancelRequest
+m_vnp_trader_object.SubscribeRequest = SubscribeRequest
 
 # vnpy.trader.gateway
 m_vnp_trader_gateway = types.ModuleType("vnpy.trader.gateway")

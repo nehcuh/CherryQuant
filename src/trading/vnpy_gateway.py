@@ -26,8 +26,6 @@ except ImportError:
     CtpGateway = None
     CTP_AVAILABLE = False
 
-from ..cherryquant.cherry_quant_strategy import CherryQuantStrategy
-
 logger = logging.getLogger(__name__)
 
 class OrderStatus(Enum):
@@ -102,8 +100,8 @@ class VNPyGateway:
         self.order_callbacks: List[Callable] = []
         self.position_callbacks: List[Callable] = []
 
-        # 策略实例
-        self.strategies: Dict[str, CherryQuantStrategy] = {}
+        # 策略实例（此处不强制依赖具体策略类型，以避免硬耦合）
+        self.strategies: Dict[str, Any] = {}
 
         logger.info(f"VNPy网关初始化完成: {gateway_name}")
 
@@ -347,8 +345,15 @@ class VNPyGateway:
         return self.orders.get(vt_orderid)
 
     def get_tick(self, vt_symbol: str) -> Optional[TickData]:
-        """获取Tick数据"""
-        return self.ticks.get(vt_symbol)
+        """获取最新的Tick数据"""
+        return self.main_engine.get_tick(vt_symbol)
+
+    def get_latest_price(self, vt_symbol: str) -> Optional[float]:
+        """获取最新价格（便捷方法）"""
+        tick = self.get_tick(vt_symbol)
+        if tick:
+            return tick.last_price
+        return None
 
     def get_all_positions(self) -> List[PositionData]:
         """获取所有持仓"""
@@ -403,7 +408,7 @@ class VNPyGateway:
         except Exception as e:
             logger.error(f"取消订阅市场数据失败: {e}")
 
-    def add_strategy(self, strategy_id: str, strategy: CherryQuantStrategy) -> None:
+    def add_strategy(self, strategy_id: str, strategy: Any) -> None:
         """添加策略"""
         self.strategies[strategy_id] = strategy
         logger.info(f"策略已添加: {strategy_id}")

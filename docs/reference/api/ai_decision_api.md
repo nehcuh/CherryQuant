@@ -13,9 +13,16 @@ CherryQuant AI决策引擎提供基于大语言模型的期货交易决策服务
 #### 初始化
 
 ```python
-from ai.decision_engine.futures_engine import FuturesDecisionEngine
+from cherryquant.bootstrap.app_context import create_app_context
+from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
 
-engine = FuturesDecisionEngine()
+async def create_engine() -> FuturesDecisionEngine:
+    """通过 AppContext 构建 FuturesDecisionEngine，复用集中管理的依赖。"""
+    ctx = await create_app_context()
+    return FuturesDecisionEngine(
+        ai_client=ctx.ai_client,
+        db_manager=ctx.db,
+    )
 ```
 
 #### 主要方法
@@ -29,7 +36,8 @@ async def get_decision(
     self,
     symbol: str,
     account_info: Dict[str, Any],
-    current_positions: List[Dict[str, Any]] = None
+    current_positions: Optional[List[Dict[str, Any]]] = None,
+    exchange: str = "SHFE",
 ) -> Optional[Dict[str, Any]]:
 ```
 
@@ -74,16 +82,17 @@ decision = await engine.get_decision(
 )
 ```
 
-### 2. OpenAIClient
+### 2. AsyncOpenAIClient
 
-OpenAI API客户端，用于调用GPT模型。
+OpenAI API 异步客户端，用于调用 GPT 模型。
 
 #### 初始化
 
 ```python
-from ai.llm_client.openai_client import OpenAIClient
+from config.settings.base import CONFIG
+from cherryquant.ai.llm_client.openai_client import AsyncOpenAIClient
 
-client = OpenAIClient()
+client = AsyncOpenAIClient(CONFIG.ai)
 ```
 
 #### 主要方法
@@ -255,25 +264,32 @@ TRADING_CONFIG = {
 
 ```python
 import asyncio
-from ai.decision_engine.futures_engine import FuturesDecisionEngine
+from cherryquant.bootstrap.app_context import create_app_context
+from cherryquant.ai.decision_engine.futures_engine import FuturesDecisionEngine
 
 async def main():
-    # 初始化决策引擎
-    engine = FuturesDecisionEngine()
+    # 初始化应用上下文（加载配置、数据库和 AI 客户端）
+    ctx = await create_app_context()
+
+    # 使用依赖注入构造决策引擎
+    engine = FuturesDecisionEngine(
+        ai_client=ctx.ai_client,
+        db_manager=ctx.db,
+    )
 
     # 构造账户信息
     account_info = {
         "return_pct": 0.0,
         "win_rate": 0.0,
         "cash_available": 100000.0,
-        "account_value": 100000.0
+        "account_value": 100000.0,
     }
 
-    # 获取交易决策
+    # 获取交易决策（exchange 默认为 "SHFE"）
     decision = await engine.get_decision(
         symbol="rb2501",
         account_info=account_info,
-        current_positions=[]
+        current_positions=[],
     )
 
     if decision:
@@ -291,18 +307,18 @@ asyncio.run(main())
 ### 批量多合约决策
 
 ```python
-async def multi_symbol_decisions():
-    engine = FuturesDecisionEngine()
+async def multi_symbol_decisions(engine: FuturesDecisionEngine, account_info: Dict[str, Any]):
     symbols = ["rb2501", "i2501", "cu2501"]
 
     tasks = []
     for symbol in symbols:
-        task = engine.get_decision(
-            symbol=symbol,
-            account_info=account_info,
-            current_positions=[]
+        tasks.append(
+            engine.get_decision(
+                symbol=symbol,
+                account_info=account_info,
+                current_positions=[],
+            )
         )
-        tasks.append(task)
 
     decisions = await asyncio.gather(*tasks, return_exceptions=True)
 

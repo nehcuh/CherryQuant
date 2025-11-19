@@ -19,7 +19,7 @@ from pathlib import Path
 # 项目导入
 from cherryquant.ai.agents.agent_manager import AgentManager
 from cherryquant.adapters.data_storage.database_manager import DatabaseManager
-from utils.ai_logger import AITradingLogger
+from cherryquant.utils.ai_logger import AITradingLogger
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,146 @@ def initialize_services(
     agent_manager = am
     db_manager = dm
     ai_logger = al
+
+
+def _parse_timestamp(value: Any) -> Optional[datetime]:
+    """尽量从字符串/日期对象解析为 datetime，用于 PnL 计算。"""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _compute_simulated_pnl(recent_trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """根据 recent_trades 计算模拟账户的累计盈亏曲线。"""
+    if not recent_trades:
+        return []
+
+    items = []
+    for trade in recent_trades:
+        ts = _parse_timestamp(trade.get("timestamp") or trade.get("entry_time"))
+        pnl = trade.get("pnl")
+        if ts is None or pnl is None:
+            continue
+        try:
+            pnl_f = float(pnl)
+        except (TypeError, ValueError):
+            continue
+        items.append((ts, pnl_f))
+
+    if not items:
+        return []
+
+    items.sort(key=lambda x: x[0])
+    cum = 0.0
+    series: List[Dict[str, Any]] = []
+    for ts, pnl_value in items:
+        cum += pnl_value
+        series.append({"timestamp": ts.isoformat(), "cum_pnl": cum})
+    return series
+
+
+def _compute_live_pnl(strategy_id: str) -> List[Dict[str, Any]]:
+    """根据 live_executions 近似计算实盘执行的累计已实现盈亏曲线。"""
+    if not agent_manager or not hasattr(agent_manager, "live_executions"):
+        return []
+
+    executions = agent_manager.live_executions.get(strategy_id, []) or []
+    if not executions:
+        return []
+
+    events = []
+    for e in executions:
+        ts = _parse_timestamp(e.get("timestamp"))
+        if ts is None:
+            continue
+        direction = str(e.get("direction") or "").lower()
+        volume = e.get("volume")
+        price = e.get("price")
+        symbol = e.get("symbol") or ""
+        if volume is None or price is None:
+            continue
+        try:
+            vol_f = float(volume)
+            price_f = float(price)
+        except (TypeError, ValueError):
+            continue
+        events.append({
+            "timestamp": ts,
+            "direction": direction,
+            "volume": vol_f,
+            "price": price_f,
+            "symbol": symbol,
+        })
+
+    if not events:
+        return []
+
+    events.sort(key=lambda x: x["timestamp"])
+
+    # 按 symbol 维护头寸与均价
+    state: Dict[str, Dict[str, Any]] = {}
+    series: List[Dict[str, Any]] = []
+
+    for ev in events:
+        symbol = ev["symbol"]
+        direction = ev["direction"]
+        qty = ev["volume"]
+        price = ev["price"]
+        ts = ev["timestamp"]
+
+        if direction in ("long", "buy"):
+            sign = 1
+        elif direction in ("short", "sell"):
+            sign = -1
+        else:
+            continue
+
+        sym_state = state.setdefault(symbol, {"pos": 0.0, "avg_price": 0.0, "realized": 0.0})
+        pos = sym_state["pos"]
+        avg_price = sym_state["avg_price"]
+        realized = sym_state["realized"]
+        remaining = qty
+
+        # 1) 反向成交先平仓
+        if pos != 0 and pos * sign < 0:
+            closing_qty = min(abs(pos), remaining)
+            if closing_qty > 0:
+                if pos > 0 and sign == -1:
+                    # 多头平仓
+                    realized += (price - avg_price) * closing_qty
+                elif pos < 0 and sign == 1:
+                    # 空头平仓
+                    realized += (avg_price - price) * closing_qty
+                pos += sign * closing_qty
+                remaining -= closing_qty
+                if pos == 0:
+                    avg_price = 0.0
+
+        # 2) 剩余部分按当前方向开仓/加仓
+        if remaining > 0:
+            if pos == 0 or pos * sign > 0:
+                total_qty = abs(pos) + remaining
+                if total_qty > 0:
+                    if pos == 0:
+                        avg_price = price
+                    else:
+                        avg_price = (avg_price * abs(pos) + price * remaining) / total_qty
+                pos += sign * remaining
+
+        sym_state["pos"] = pos
+        sym_state["avg_price"] = avg_price
+        sym_state["realized"] = realized
+
+        # 计算策略级累计 PnL（按所有 symbol 的 realized 之和）
+        total_realized = sum(s["realized"] for s in state.values())
+        series.append({"timestamp": ts.isoformat(), "cum_pnl": total_realized})
+
+    return series
 
 # ==================== 根路径 ====================
 
@@ -254,6 +394,50 @@ async def get_strategy_details(strategy_id: str):
         raise
     except Exception as e:
         logger.error(f"获取策略详情失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/strategies/{strategy_id}/executions")
+async def get_strategy_executions(strategy_id: str):
+    """获取单个策略的模拟交易与实盘执行对比视图。
+
+    返回字段：
+    - recent_trades: StrategyAgent 内部记录的最近模拟交易（教学/回测视角）
+    - live_executions: 来自 KLineOrderManager 的实盘订单执行记录（网关/交易所视角）
+    - sim_pnl: 基于 recent_trades 计算的累计 PnL 时间序列
+    - live_pnl: 基于 live_executions 计算的累计 PnL 时间序列（近似）
+    """
+    try:
+        if not agent_manager:
+            raise HTTPException(status_code=503, detail="服务未初始化")
+
+        details = agent_manager.get_strategy_details(strategy_id)
+        if not details:
+            raise HTTPException(status_code=404, detail="策略不存在")
+
+        sim_pnl = _compute_simulated_pnl(details.get("recent_trades", []))
+        live_pnl = _compute_live_pnl(strategy_id)
+
+        sim_last = sim_pnl[-1]["cum_pnl"] if sim_pnl else None
+        live_last = live_pnl[-1]["cum_pnl"] if live_pnl else None
+        pnl_diff = None
+        if sim_last is not None and live_last is not None:
+            pnl_diff = live_last - sim_last
+
+        return {
+            "strategy_id": strategy_id,
+            "recent_trades": details.get("recent_trades", []),
+            "live_executions": details.get("live_executions", []),
+            "sim_pnl": sim_pnl,
+            "live_pnl": live_pnl,
+            "sim_pnl_last": sim_last,
+            "live_pnl_last": live_last,
+            "pnl_diff": pnl_diff,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取策略执行详情失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/strategies")

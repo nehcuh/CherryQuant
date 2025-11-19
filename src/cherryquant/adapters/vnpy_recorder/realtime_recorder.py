@@ -12,7 +12,7 @@ from typing import Dict, Optional, Callable, List
 # 使用 MongoDB 版本的 DatabaseManager（通过依赖注入传入实例）
 from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame, MarketDataPoint
-from src.trading.vnpy_gateway import VNPyGateway
+from trading.vnpy_gateway import VNPyGateway
 
 logger = logging.getLogger(__name__)
 

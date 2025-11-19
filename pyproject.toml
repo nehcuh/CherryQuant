@@ -37,6 +37,7 @@ dependencies = [
     # QuantBox for high-performance data management (replaces AKShare)
     "quantbox-cn @ file:///Users/huchen/Projects/quantbox",
     "pydantic-settings>=2.12.0",
+    "matplotlib>=3.8.0",
 ]
 authors = [
     {name = "CherryQuant Team", email = "team@cherryquant.ai"}
@@ -58,7 +59,6 @@ Documentation = "https://github.com/your-username/CherryQuant/docs"
 
 [project.scripts]
 cherryquant = "run_cherryquant:main"
-cherryquant-ingest = "services.data_ingestor:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -78,4 +78,39 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "jupyterlab>=4.0.0",
+]
+
+[tool.pytest.ini_options]
+# Restrict discovery to project tests
+testpaths = ["tests"]
+
+# Standard naming patterns
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Do not recurse into external/vendor or tooling directories
+norecursedirs = [
+    ".*",
+    "build",
+    "dist",
+    "docs",
+    "docker",
+    "third_party",
+    ".venv",
+    "venv",
+    "__pycache__",
+]
+
+# Asyncio plugin configuration
+asyncio_mode = "auto"
+
+# Show summary for skips/xfails/etc., with coverage reporting
+addopts = "-ra --cov=src/cherryquant --cov-report=term-missing --cov-report=html --cov-report=xml"
+
+# Tame noisy warnings from dependencies
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
 ]

@@ -1,8 +1,7 @@
 """
 市场数据管理器
-支持多种数据源：Tushare (via QuantBox)、Simnow、vn.py内置数据等
+支持多种数据源：Tushare (via QuantBox)、Simnow (via VNPy)
 使用协议定义标准接口
-注意：AKShare 已移除，使用 QuantBox 替代
 """
 
 import logging
@@ -13,8 +12,6 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
 from config.settings.base import CONFIG
-
-# import akshare as ak  # 已移除，使用 QuantBox 替代
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -56,18 +53,6 @@ class DataSourceStatus:
     available: bool
     description: str
     response_time_ms: Optional[float] = None
-
-
-# ============================================================================
-# AKShareDataSource 已移除
-# 原因：已迁移到 QuantBox，提供更高性能和更完整的数据支持
-# 如需历史数据，请使用 HistoryDataManager (基于 QuantBox)
-# 如需实时数据，请使用 VNPy CTP 连接
-# ============================================================================
-
-# class AKShareDataSource:
-#     """AKShare数据源实现 - 已废弃，使用 QuantBox 替代"""
-#     pass
 
 
 class TushareDataSource:
@@ -408,15 +393,14 @@ class MarketDataManager:
 
 
 class SimNowDataSource:
-    """Simnow数据源实现 - 需要账号配置"""
+    """Simnow数据源实现 - 通过VNPyGateway获取实时数据"""
 
     def __init__(self, userid: str, password: str, broker_id: str = "9999"):
         self._name = "SimNow"
-        self._description = "期货模拟交易专用数据源"
+        self._description = "期货模拟交易专用数据源 (via VNPy)"
         self.userid = userid
         self.password = password
         self.broker_id = broker_id
-        self.gateway = None
 
     @property
     def name(self) -> str:
@@ -426,14 +410,46 @@ class SimNowDataSource:
     def description(self) -> str:
         return self._description
 
+    def is_available(self) -> bool:
+        """检查SimNow是否可用"""
+        return bool(self.userid and self.password)
+
     async def get_realtime_price(self, symbol: str) -> Optional[float]:
         """获取实时价格"""
         try:
-            if not self.gateway:
-                await self._connect_gateway()
+            # 动态导入以避免循环依赖
+            from trading.vnpy_gateway import gateway_manager
 
-            # 这里需要vn.py的CTP网关支持
-            # 暂时返回None，需要后续实现
+            # 获取主网关（通常是CTP）
+            gateway = gateway_manager.primary_gateway
+            if not gateway:
+                logger.warning("VNPy网关未初始化，无法获取SimNow数据")
+                return None
+
+            if not gateway.connected:
+                logger.warning("VNPy网关未连接，无法获取SimNow数据")
+                return None
+
+            # 尝试获取Tick数据
+            # 注意：symbol可能是简写（如rb2501），需要匹配网关中的vt_symbol
+            # 这里做一个简单的尝试匹配
+            tick = gateway.get_tick(symbol)
+            if not tick:
+                # 尝试添加交易所后缀
+                # 这部分逻辑最好由ContractResolver处理，但这里做个简单的fallback
+                for suffix in ['.SHFE', '.DCE', '.CZCE', '.CFFEX', '.INE']:
+                    tick = gateway.get_tick(f"{symbol}{suffix}")
+                    if tick:
+                        break
+
+            if tick:
+                return tick.last_price
+            else:
+                logger.debug(f"VNPy网关未缓存 {symbol} 的Tick数据")
+                return None
+
+        except ImportError:
+            logger.error("无法导入 trading.vnpy_gateway，请检查项目结构")
             return None
         except Exception as e:
             logger.error(f"SimNow获取实时价格失败: {e}")
@@ -443,25 +459,11 @@ class SimNowDataSource:
         self, symbol: str, period: str = "5m", count: int = 100
     ) -> Optional[pd.DataFrame]:
         """获取K线数据"""
-        try:
-            if not self.gateway:
-                await self._connect_gateway()
-
-            # 需要vn.py网关支持
-            return None
-        except Exception as e:
-            logger.error(f"SimNow获取K线数据失败: {e}")
-            return None
-
-    def is_available(self) -> bool:
-        """检查SimNow是否可用"""
-        return bool(self.userid and self.password)
-
-    async def _connect_gateway(self):
-        """连接SimNow网关"""
-        # 这里需要实现vn.py CTP网关连接
-        # 暂时留空，后续实现
-        pass
+        # SimNow (CTP) 本身不提供历史K线数据下载
+        # 实时交易中，K线通常由 RealtimeRecorder 聚合
+        # 这里返回 None，让 MarketDataManager 回退到其他数据源（如数据库或Tushare）
+        logger.debug("SimNow接口不支持直接获取历史K线，请使用数据库或Tushare")
+        return None
 
 
 def create_default_data_manager(
@@ -503,6 +505,15 @@ def create_default_data_manager(
         # Live模式：主要从数据库读取RealtimeRecorder写入的实时数据
         logger.info("✅ Live模式：主数据源 MongoDB（CTP实时 tick聚合）")
 
+        # 添加 SimNow (VNPy) 作为实时价格补充
+        # 注意：这里假设 SimNow 配置已在 .env 中设置，且 VNPyGateway 会被初始化
+        simnow_userid = CONFIG.ctp.userid
+        simnow_password = CONFIG.ctp.password
+        if simnow_userid and simnow_password:
+             simnow_source = SimNowDataSource(simnow_userid, simnow_password)
+             manager.add_data_source(simnow_source, is_primary=False) # 此时作为备用，或者可以设为主用
+             logger.info("✅ Live模式：添加 SimNow (VNPy) 数据源用于实时价格")
+
         if effective_token and effective_token != "your_tushare_pro_token_here":
             ts_source = TushareDataSource(token=effective_token)
             if ts_source.is_available():
@@ -526,7 +537,6 @@ def create_simnow_data_manager(
     simnow_source = SimNowDataSource(userid, password)
     manager.add_data_source(simnow_source, is_primary=True)
 
-    # AKShare 已移除 - 使用 Tushare (via QuantBox) 作为备用
     # 如有Tushare Token，则加入备用数据源
     if tushare_token is None:
         tushare_token = CONFIG.data_source.tushare_token
@@ -536,18 +546,17 @@ def create_simnow_data_manager(
             manager.add_data_source(ts_source, is_primary=False)
             logger.info("✅ 添加备用数据源: Tushare")
 
-    logger.info("数据管理器初始化完成，主数据源：SimNow，备用数据源：Tushare (via QuantBox)")
+    logger.info("数据管理器初始化完成，主数据源：SimNow (VNPy)，备用数据源：Tushare")
     return manager
 
 
 def create_tushare_data_manager() -> MarketDataManager:
-    """创建Tushare主数据源的数据管理器（不回退AKShare）"""
+    """创建Tushare主数据源的数据管理器"""
     manager = MarketDataManager()
     ts_source = TushareDataSource()
     if ts_source.is_available():
         manager.add_data_source(ts_source, is_primary=True)
         logger.info("数据管理器初始化完成，主数据源：Tushare")
     else:
-        logger.warning("未检测到可用的 Tushare Token，历史数据功能将受限（不回退 AKShare）")
-        # 启动受限模式（无主数据源），由上层根据需要处理
+        logger.warning("未检测到可用的 Tushare Token，历史数据功能将受限")
     return manager

@@ -17,9 +17,10 @@ from cherryquant.ai.agents.agent_manager import AgentManager, PortfolioRiskConfi
 from cherryquant.adapters.data_storage.database_manager import DatabaseManager
 from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
 from cherryquant.bootstrap.app_context import create_app_context
-from src.risk.portfolio_risk_manager import PortfolioRiskManager
-from src.alerts.alert_manager import AlertManager
-from utils.ai_logger import get_ai_logger
+from risk.portfolio_risk_manager import PortfolioRiskManager
+from alerts.alert_manager import AlertManager
+from trading.order_manager import KLineOrderManager
+from cherryquant.utils.ai_logger import get_ai_logger
 from cherryquant.web.api.main import create_app, run_server
 from config.settings.settings import TRADING_CONFIG, AI_CONFIG, RISK_CONFIG
 from config.alert_config import get_alert_config
@@ -53,6 +54,7 @@ class CherryQuantSystem:
         self.web_app: Optional = None
         self.vnpy_gateway: Optional = None
         self.realtime_recorder: Optional = None
+        self.order_manager: Optional[KLineOrderManager] = None
 
         self.is_running = False
         self.startup_tasks = []
@@ -172,7 +174,7 @@ class CherryQuantSystem:
             # 2.1 初始化 RealtimeRecorder（仅 Live 模式）
             if self.data_mode == "live":
                 try:
-                    from src.trading.vnpy_gateway import VNPyGateway
+                    from trading.vnpy_gateway import VNPyGateway
                     from cherryquant.adapters.vnpy_recorder.realtime_recorder import (
                         RealtimeRecorder,
                     )
@@ -227,6 +229,17 @@ class CherryQuantSystem:
                                     )
                                     await self.realtime_recorder.start([])  # 启动后由上层控制订阅
                                     logger.info("✅ Live模式：CTP实时记录器初始化完成")
+
+                                    # 初始化基于 K 线的订单管理器（使用当前事件循环）
+                                    loop = asyncio.get_running_loop()
+                                    self.order_manager = KLineOrderManager(
+                                        gateway=self.vnpy_gateway,
+                                        enable_smart_orders=True,
+                                        default_leverage=self.app_ctx.config.trading.default_leverage,
+                                        loop=loop,
+                                    )
+                                    await self.order_manager.start()
+                                    logger.info("✅ Live模式：KLineOrderManager 初始化完成")
                     else:
                         logger.warning(
                             "⚠️ Live模式缺少CTP配置（CTP_USERID或CTP_PASSWORD未设置）"
@@ -284,6 +297,8 @@ class CherryQuantSystem:
                 market_data_manager=self.market_data_manager,
                 risk_config=risk_config,
                 ai_client=self.app_ctx.ai_client,
+                order_manager=self.order_manager,
+                enable_live_trading=self.data_mode == "live" and self.order_manager is not None,
             )
 
             # 加载策略配置

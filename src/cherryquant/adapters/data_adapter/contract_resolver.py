@@ -1,101 +1,39 @@
 """
-期货合约解析器 - 动态查询主力合约
-支持从 Tushare 和 vnpy 获取当前主力合约信息
+合约解析器模块
+定义合约解析的基础接口和期货实现
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import asyncio
-from functools import lru_cache
+from abc import ABC, abstractmethod
+
+from cherryquant.constants import COMMODITY_EXCHANGE_MAP, EXCHANGE_TO_TUSHARE
 
 logger = logging.getLogger(__name__)
 
-# 品种代码与交易所映射
-COMMODITY_EXCHANGE_MAP = {
-    # 上海期货交易所 SHFE
-    "cu": "SHFE",  # 铜
-    "al": "SHFE",  # 铝
-    "zn": "SHFE",  # 锌
-    "pb": "SHFE",  # 铅
-    "ni": "SHFE",  # 镍
-    "sn": "SHFE",  # 锡
-    "au": "SHFE",  # 黄金
-    "ag": "SHFE",  # 白银
-    "rb": "SHFE",  # 螺纹钢
-    "hc": "SHFE",  # 热轧卷板
-    "fu": "SHFE",  # 燃料油
-    "bu": "SHFE",  # 沥青
-    "ru": "SHFE",  # 橡胶
-    "ss": "SHFE",  # 不锈钢
-    "sp": "SHFE",  # 纸浆
 
-    # 大连商品交易所 DCE
-    "a": "DCE",    # 豆一
-    "b": "DCE",    # 豆二
-    "c": "DCE",    # 玉米
-    "m": "DCE",    # 豆粕
-    "y": "DCE",    # 豆油
-    "p": "DCE",    # 棕榈油
-    "i": "DCE",    # 铁矿石
-    "j": "DCE",    # 焦炭
-    "jm": "DCE",   # 焦煤
-    "l": "DCE",    # 塑料
-    "v": "DCE",    # PVC
-    "pp": "DCE",   # 聚丙烯
-    "eg": "DCE",   # 乙二醇
-    "eb": "DCE",   # 苯乙烯
-    "pg": "DCE",   # 液化石油气
-    "lh": "DCE",   # 生猪
-    "jd": "DCE",   # 鸡蛋
-    "fb": "DCE",   # 纤维板
-    "bb": "DCE",   # 胶合板
-    "cs": "DCE",   # 玉米淀粉
-    "rr": "DCE",   # 粳米
+class BaseContractResolver(ABC):
+    """合约解析器基类"""
 
-    # 郑州商品交易所 CZCE
-    "sr": "CZCE",  # 白糖
-    "cf": "CZCE",  # 棉花
-    "ta": "CZCE",  # PTA
-    "oi": "CZCE",  # 菜油
-    "ma": "CZCE",  # 甲醇
-    "fg": "CZCE",  # 玻璃
-    "rm": "CZCE",  # 菜粕
-    "zc": "CZCE",  # 动力煤
-    "sf": "CZCE",  # 硅铁
-    "sm": "CZCE",  # 锰硅
-    "ur": "CZCE",  # 尿素
-    "sa": "CZCE",  # 纯碱
-    "pf": "CZCE",  # 短纤
-    "pk": "CZCE",  # 花生
-    "cy": "CZCE",  # 棉纱
+    @abstractmethod
+    async def resolve_vt_symbol(self, symbol: str) -> Optional[str]:
+        """解析为vnpy格式的vt_symbol"""
+        pass
 
-    # 中金所 CFFEX
-    "IF": "CFFEX",  # 沪深300股指期货
-    "IC": "CFFEX",  # 中证500股指期货
-    "IH": "CFFEX",  # 上证50股指期货
-    "IM": "CFFEX",  # 中证1000股指期货
-    "T": "CFFEX",   # 10年期国债
-    "TF": "CFFEX",  # 5年期国债
-    "TS": "CFFEX",  # 2年期国债
-    "TL": "CFFEX",  # 30年期国债
-}
+    @abstractmethod
+    def get_instrument_info(self, symbol: str) -> Dict[str, Any]:
+        """获取合约基础信息"""
+        pass
 
-# Tushare交易所代码映射
-EXCHANGE_TO_TUSHARE = {
-    "SHFE": "SHF",
-    "DCE": "DCE",
-    "CZCE": "ZCE",
-    "CFFEX": "CFX",
-    "INE": "INE",  # 上海国际能源交易中心
-}
 
-class ContractResolver:
-    """合约解析器 - 动态查询主力合约"""
+class FuturesContractResolver(BaseContractResolver):
+    """期货合约解析器 - 动态查询主力合约"""
 
     def __init__(self, tushare_token: Optional[str] = None):
         """
-        初始化合约解析器
+        初始化期货合约解析器
 
         Args:
             tushare_token: Tushare Pro API令牌
@@ -308,7 +246,7 @@ class ContractResolver:
 
         return results
 
-    def get_commodity_info(self, commodity: str) -> Dict[str, str]:
+    def get_instrument_info(self, commodity: str) -> Dict[str, str]:
         """
         获取品种信息
 
@@ -331,6 +269,9 @@ class ContractResolver:
         self._cache_time = None
         logger.info("合约缓存已清除")
 
+
+# 兼容旧代码
+ContractResolver = FuturesContractResolver
 
 # 全局单例
 _resolver_instance: Optional[ContractResolver] = None

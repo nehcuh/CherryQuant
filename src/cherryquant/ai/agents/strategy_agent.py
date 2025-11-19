@@ -101,6 +101,8 @@ class StrategyAgent:
         db_manager: Optional[Any] = None,
         market_data_manager: Optional[Any] = None,
         ai_client: Optional[LLMClient] = None,
+        order_manager: Optional[Any] = None,
+        enable_live_trading: bool = False,
     ):
         """初始化策略代理
 
@@ -108,11 +110,20 @@ class StrategyAgent:
             config: 策略配置
             db_manager: 数据库管理器
             market_data_manager: 市场数据管理器
+            ai_client: LLM 客户端
+            order_manager: 可选的订单管理器（如 KLineOrderManager），用于实盘下单
+            enable_live_trading: 是否启用实盘下单；为 True 且 order_manager 存在时，会在模拟逻辑之外发送真实订单
         """
         self.config = config
         self.db_manager = db_manager
         self.market_data_manager = market_data_manager
         self.ai_client = ai_client
+        self.order_manager = order_manager
+        self.enable_live_trading = bool(enable_live_trading and order_manager is not None)
+        if enable_live_trading and order_manager is None:
+            logger.warning(
+                "StrategyAgent: enable_live_trading=True 但未提供 order_manager，将退回为纯模拟模式"
+            )
 
         # 状态管理
         self.status = AgentStatus.IDLE
@@ -291,6 +302,9 @@ class StrategyAgent:
         )
 
         if decision:
+            # 为后续执行/日志补充合约信息（不覆盖模型自身字段）
+            decision.setdefault("contract_code", contract_code)
+            decision.setdefault("display_symbol", symbol)
             await self._execute_decision(symbol, decision)
 
     async def _execute_decision(self, symbol: str, decision: Dict[str, Any]) -> None:
@@ -359,6 +373,76 @@ class StrategyAgent:
         except Exception as e:
             logger.error(f"执行决策时出错: {e}")
             self.status = AgentStatus.IDLE
+
+    async def _maybe_send_live_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: int,
+        price: float,
+        decision: Dict[str, Any],
+    ) -> None:
+        """在启用实盘模式时，通过 KLineOrderManager 发送真实订单。
+
+        在教学/回测环境下如果未启用实盘或依赖不可用，将直接返回。
+        """
+        if not self.enable_live_trading or not self.order_manager:
+            return
+        if quantity <= 0:
+            return
+
+        try:
+            # 解析 vt_symbol（例如 rb2501.SHFE）
+            if not getattr(self, "contract_resolver", None):
+                logger.warning(
+                    "实盘模式已开启但 contract_resolver 未初始化，跳过真实下单"
+                )
+                return
+
+            import re
+
+            commodity = re.sub(r"\d+", "", symbol).lower()
+            vt_symbol = await self.contract_resolver.resolve_vt_symbol(commodity)
+            if not vt_symbol:
+                logger.warning(f"无法解析 {symbol} 的 vt_symbol，跳过真实下单")
+                return
+
+            # 延迟导入，避免在教学/离线环境中强依赖 vn.py
+            from vnpy.trader.constant import Direction as VnDirection, OrderType as VnOrderType
+            from trading.order_manager import OrderTIF
+
+            direction = VnDirection.LONG if side == "buy" else VnDirection.SHORT
+            order_type = VnOrderType.LIMIT if price > 0 else VnOrderType.MARKET
+
+            stop_loss = decision.get("stop_loss")
+            take_profit = decision.get("take_profit")
+
+            reason = decision.get("reason", "AI decision")
+            reference = decision.get("reference", self.config.strategy_id)
+
+            order_id = await self.order_manager.place_order(
+                strategy_id=self.config.strategy_id,
+                symbol=vt_symbol,
+                direction=direction,
+                order_type=order_type,
+                volume=quantity,
+                price=price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                time_in_force=OrderTIF.GTT_NEXT_BAR,
+                reason=reason,
+                reference=reference,
+            )
+            if order_id:
+                logger.info(
+                    f"已通过 KLineOrderManager 发送真实订单: {order_id} {vt_symbol} {side} {quantity}手 @ {price:.2f}"
+                )
+            else:
+                logger.warning(
+                    f"KLineOrderManager 下单失败: {vt_symbol} {side} {quantity}手 @ {price:.2f}"
+                )
+        except Exception as e:
+            logger.error(f"实盘下单失败（已保留模拟账户状态）: {e}")
 
     async def _execute_buy(self, symbol: str, quantity: int, price: float, decision: Dict[str, Any]) -> None:
         """执行买入操作"""
@@ -446,6 +530,9 @@ class StrategyAgent:
         # 记录到数据库
         await self._record_trade(trade)
 
+        # 若配置为实盘模式，则通过订单管理器发送真实订单
+        await self._maybe_send_live_order(symbol, "buy", quantity, price, decision)
+
         logger.info(f"执行买入: {symbol} {quantity}手 @ {price:.2f}, 决策置信度: {decision.get('confidence', 0):.2f}")
 
     async def _execute_sell(self, symbol: str, quantity: int, price: float, decision: Dict[str, Any]) -> None:
@@ -524,6 +611,9 @@ class StrategyAgent:
                 })
             except Exception as e:
                 logger.debug(f"Structured trade log failed (sell): {e}")
+
+        # 若配置为实盘模式，则通过订单管理器发送真实平仓/卖出订单
+        await self._maybe_send_live_order(symbol, "sell", quantity, price, decision)
 
         logger.info(f"执行卖出: {symbol} {quantity}手 @ {price:.2f}, 实现盈亏: {pnl:.2f}")
 

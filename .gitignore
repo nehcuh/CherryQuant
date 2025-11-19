@@ -27,11 +27,11 @@ Thumbs.db
 .env.local
 
 # Logs
-logs/*.log
+logs/
 *.log
 
 # Database cache
-data/cache/*.db
+data/cache/
 *.db
 *.sqlite
 *.sqlite3
@@ -42,6 +42,7 @@ data/cache/*.db
 htmlcov/
 coverage.xml
 .pytest_cache/
+.ruff_cache/
 
 # Temporary files
 *.tmp

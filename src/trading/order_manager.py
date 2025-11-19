@@ -64,19 +64,26 @@ class OrderExecution:
     """订单执行记录"""
     execution_id: str
     order_id: str
+    strategy_id: str
+    symbol: str
+    direction: Direction
     volume: int
     price: float
     timestamp: datetime
     commission: float
 
 class KLineOrderManager:
-    """基于K线的订单管理器"""
+    """基于K线的订单管理器
+
+    注意：本管理器内部使用 asyncio 事件循环调度异步回调，
+    以便从 vn.py 的同步事件回调桥接到异步处理逻辑。"""
 
     def __init__(
         self,
         gateway: VNPyGateway,
         enable_smart_orders: bool = True,
-        default_leverage: float = 5.0
+        default_leverage: float = 5.0,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         """初始化订单管理器
 
@@ -89,9 +96,18 @@ class KLineOrderManager:
         self.enable_smart_orders = enable_smart_orders
         self.default_leverage = default_leverage
 
+        # 事件循环（用于跨线程调度异步回调）
+        try:
+            self._loop: Optional[asyncio.AbstractEventLoop] = loop or asyncio.get_running_loop()
+        except RuntimeError:
+            # 在无运行中事件循环的上下文中初始化时，异步回调将被安全忽略
+            self._loop = None
+
         # 订单存储
         self.orders: Dict[str, SmartOrder] = {}
         self.executions: List[OrderExecution] = []
+        # 最多保留的执行记录条数（滚动窗口）
+        self._max_executions: int = 1000
 
         # K线数据缓存
         self.kline_data: Dict[str, List[Dict[str, Any]]] = {}
@@ -111,10 +127,43 @@ class KLineOrderManager:
         logger.info("K线订单管理器初始化完成")
 
     def _register_gateway_callbacks(self) -> None:
-        """注册网关回调函数"""
-        self.gateway.register_order_callback(self._on_order_update)
-        self.gateway.register_trade_callback(self._on_trade_update)
-        self.gateway.register_tick_callback(self._on_tick_update)
+        """注册网关回调函数
+
+        vn.py 的事件回调是同步的，这里通过线程安全的方式
+        将异步处理函数提交到 asyncio 事件循环中执行。
+        """
+
+        def _wrap_async(cb):
+            """将 async 回调包装为同步回调，安全地调度到事件循环。"""
+            if not self._loop:
+                # 无事件循环时，直接返回一个记录日志但不执行异步逻辑的占位实现
+                def _noop(*args, **kwargs):  # noqa: D401
+                    logger.debug(
+                        "KLineOrderManager: no asyncio loop bound; async callback skipped"
+                    )
+
+                return _noop
+
+            def _handler(arg):
+                try:
+                    fut = asyncio.run_coroutine_threadsafe(cb(arg), self._loop)
+                    # 可选：为调试目的记录异常
+                    def _log_result(f: asyncio.Future) -> None:
+                        try:
+                            _ = f.result()
+                        except Exception as exc:  # noqa: BLE001
+                            logger.error(f"异步订单回调执行失败: {exc}")
+
+                    fut.add_done_callback(_log_result)
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(f"提交异步订单回调失败: {exc}")
+
+            return _handler
+
+        # 使用包装后的同步回调注册到网关
+        self.gateway.register_order_callback(_wrap_async(self._on_order_update))
+        self.gateway.register_trade_callback(_wrap_async(self._on_trade_update))
+        self.gateway.register_tick_callback(_wrap_async(self._on_tick_update))
 
     async def start(self) -> None:
         """启动订单管理器"""
@@ -535,13 +584,19 @@ class KLineOrderManager:
                     execution = OrderExecution(
                         execution_id=str(uuid.uuid4()),
                         order_id=order.order_id,
+                        strategy_id=order.strategy_id,
+                        symbol=order.symbol,
+                        direction=trade_data.direction,
                         volume=trade_data.volume,
                         price=trade_data.price,
                         timestamp=trade_data.trade_time,
-                        commission=getattr(trade_data, 'commission', 0)
+                        commission=getattr(trade_data, 'commission', 0),
                     )
 
                     self.executions.append(execution)
+                    # 滚动窗口：仅保留最近 N 条执行记录，避免长期运行时内存无限增长
+                    if len(self.executions) > self._max_executions:
+                        self.executions = self.executions[-self._max_executions :]
 
                     # 更新平均成交价格
                     total_volume = order.filled_volume

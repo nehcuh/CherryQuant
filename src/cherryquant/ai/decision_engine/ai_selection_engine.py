@@ -5,6 +5,7 @@ AI驱动的期货品种选择和交易决策引擎
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import asyncio
@@ -88,7 +89,8 @@ class AISelectionEngine:
         account_info: Dict[str, Any] = None,
         current_positions: List[Dict[str, Any]] = None,
         market_scope: Dict[str, Any] = None,
-        commodities: Optional[List[str]] = None
+        commodities: Optional[List[str]] = None,
+        max_retries: int = 2
     ) -> Optional[Dict[str, Any]]:
         """
         获取AI最优交易决策（包含品种选择）
@@ -98,6 +100,7 @@ class AISelectionEngine:
             current_positions: 当前持仓
             market_scope: 市场范围配置
             commodities: 品种代码列表（如 ["rb", "cu"]），优先级高于market_scope
+            max_retries: 最大重试次数
 
         Returns:
             包含品种选择和交易决策的完整JSON
@@ -125,7 +128,7 @@ class AISelectionEngine:
                 logger.error("无法获取市场数据")
                 return None
 
-            # 2. 构造AI提示词
+            # 3. 构造AI提示词
             system_prompt = AI_SELECTION_SYSTEM_PROMPT
             user_prompt = self._build_ai_selection_prompt(
                 market_data=market_data,
@@ -135,24 +138,54 @@ class AISelectionEngine:
 
             logger.info(f"📊 分析市场数据: {market_data['total_contracts']} 个合约")
 
-            # 3. 调用AI模型
-            logger.info("🤖 AI正在分析全市场并选择最优交易机会...")
-            decision = await self.ai_client.get_trading_decision_async(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt
-            )
+            # 4. 调用AI模型（带重试机制）
+            for attempt in range(max_retries + 1):
+                try:
+                    logger.info(f"🤖 AI正在分析全市场 (尝试 {attempt + 1}/{max_retries + 1})...")
+                    decision = await self.ai_client.get_trading_decision_async(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt
+                    )
 
-            if decision:
-                self._validate_selection_decision(decision)
-                logger.info(f"✅ AI决策完成: {decision.get('selected_trade', {}).get('action', 'unknown')}")
-                logger.info(f"🎯 选择合约: {decision.get('selected_trade', {}).get('symbol', 'unknown')}")
-                return decision
-            else:
-                logger.error("AI决策获取失败")
-                return None
+                    if decision:
+                        # 清理和解析JSON
+                        if isinstance(decision, str):
+                            decision = self._clean_and_parse_json(decision)
+
+                        # 验证决策
+                        if self._validate_selection_decision(decision, market_data):
+                            logger.info(f"✅ AI决策完成: {decision.get('selected_trade', {}).get('action', 'unknown')}")
+                            logger.info(f"🎯 选择合约: {decision.get('selected_trade', {}).get('symbol', 'unknown')}")
+                            return decision
+                        else:
+                            logger.warning(f"AI决策验证失败 (尝试 {attempt + 1})")
+                    else:
+                        logger.warning(f"AI返回空决策 (尝试 {attempt + 1})")
+
+                except Exception as e:
+                    logger.error(f"AI调用或解析失败 (尝试 {attempt + 1}): {e}")
+
+                # 如果不是最后一次尝试，等待后重试
+                if attempt < max_retries:
+                    await asyncio.sleep(1)
+
+            logger.error("达到最大重试次数，AI决策获取失败")
+            return None
 
         except Exception as e:
-            logger.error(f"AI选择决策过程错误: {e}")
+            logger.error(f"AI选择决策过程严重错误: {e}")
+            return None
+
+    def _clean_and_parse_json(self, response_str: str) -> Optional[Dict[str, Any]]:
+        """清理并解析JSON字符串（处理Markdown代码块）"""
+        try:
+            # 移除Markdown代码块标记
+            cleaned = re.sub(r'```json\s*', '', response_str)
+            cleaned = re.sub(r'```\s*', '', cleaned)
+            cleaned = cleaned.strip()
+            return json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON解析失败: {e}")
             return None
 
     async def _get_comprehensive_market_data(self, market_scope: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
@@ -407,16 +440,21 @@ class AISelectionEngine:
             "daily_pnl_pct": 0.0
         }
 
-    def _validate_selection_decision(self, decision: Dict[str, Any]) -> bool:
-        """验证AI选择决策的格式"""
+    def _validate_selection_decision(self, decision: Dict[str, Any], market_data: Dict[str, Any] = None) -> bool:
+        """验证AI选择决策的格式和业务逻辑"""
         try:
+            if not isinstance(decision, dict):
+                logger.error("决策必须是字典格式")
+                return False
+
             required_fields = [
                 "market_analysis", "top_opportunities", "selected_trade"
             ]
 
             for field in required_fields:
                 if field not in decision:
-                    raise ValueError(f"缺少必需字段: {field}")
+                    logger.error(f"缺少必需字段: {field}")
+                    return False
 
             # 验证selected_trade字段
             selected_trade = decision["selected_trade"]
@@ -427,12 +465,29 @@ class AISelectionEngine:
 
             for field in trade_required_fields:
                 if field not in selected_trade:
-                    raise ValueError(f"selected_trade缺少必需字段: {field}")
+                    logger.error(f"selected_trade缺少必需字段: {field}")
+                    return False
 
             # 验证置信度
             confidence = selected_trade.get("confidence", 0)
             if not 0 <= confidence <= 1:
-                raise ValueError("confidence必须在0-1之间")
+                logger.error("confidence必须在0-1之间")
+                return False
+
+            # 业务逻辑验证：检查合约是否存在于市场数据中
+            if market_data:
+                symbol = selected_trade.get("symbol")
+                if symbol and symbol.lower() != "none":
+                    found = False
+                    for exchange, contracts in market_data.get("exchange_data", {}).items():
+                        if symbol.lower() in [s.lower() for s in contracts.keys()]:
+                            found = True
+                            break
+                    if not found:
+                        logger.warning(f"AI推荐了不在市场数据中的合约: {symbol} (可能是幻觉)")
+                        # 这里可以选择返回False拒绝，或者仅警告
+                        # 为了安全，建议拒绝
+                        return False
 
             return True
 
