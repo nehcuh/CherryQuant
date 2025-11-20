@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 
 # 在导入配置类之前优先加载项目根目录下的 .env，
 # 这样 pydantic-settings 可以从环境变量中读取到用户配置。
-load_dotenv()
+_ = load_dotenv()
+
 
 # 兼容旧的环境变量命名：
 # - DATA_MODE -> MODE（供 DataSourceConfig.mode 使用）
@@ -26,7 +27,7 @@ if os.getenv("DATA_SOURCE"):
     if not os.getenv("SOURCE"):
         os.environ["SOURCE"] = os.environ["DATA_SOURCE"]
     # 避免嵌套 BaseSettings 将 DATA_SOURCE 当成复杂对象来解析
-    os.environ.pop("DATA_SOURCE", None)
+    _ = os.environ.pop("DATA_SOURCE", None)
 
 # 兼容 AI 环境变量命名：将 OPENAI_* 映射到通用字段，
 # 以便 AIConfig(model/base_url/api_key) 能在 pydantic-settings v2 下正常读取。
@@ -88,42 +89,30 @@ class AIConfig(BaseSettings):
     """
 
     model: str = Field(
-        default="gpt-4o",
-        description="使用的AI模型",
-        env=["OPENAI_MODEL", "MODEL_NAME"],
+        default="gpt-4o", description="使用的AI模型", alias="OPENAI_MODEL"
     )
     base_url: str = Field(
         default="https://api.openai.com/v1",
         description="API基础URL",
-        env=["OPENAI_BASE_URL"],
+        alias="OPENAI_BASE_URL",
     )
-    api_key: str = Field(
-        default="",
-        description="API密钥",
-        env=["OPENAI_API_KEY", "API_KEY"],
-    )
+    api_key: str = Field(default="", description="API密钥", alias="OPENAI_API_KEY")
     temperature: float = Field(
-        default=0.3,
-        description="AI温度参数",
-        env=["OPENAI_TEMPERATURE", "AI_TEMPERATURE"],
+        default=0.3, description="AI温度参数", alias="OPENAI_TEMPERATURE"
     )
     max_retries: int = Field(
-        default=3,
-        description="最大重试次数",
-        env=["OPENAI_MAX_RETRIES", "MAX_RETRIES"],
+        default=3, description="最大重试次数", alias="OPENAI_MAX_RETRIES"
     )
     timeout: int = Field(
-        default=30,
-        description="API超时时间（秒）",
-        env=["OPENAI_TIMEOUT", "API_TIMEOUT"],
+        default=30, description="API超时时间（秒）", alias="OPENAI_TIMEOUT"
     )
 
     class Config:
         """环境变量与 .env 加载配置（兼容现有 OPENAI_* / *_TIMEOUT 等变量）"""
 
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+        env_file: str = ".env"
+        env_file_encoding: str = "utf-8"
+        extra: str = "ignore"
 
     @field_validator("api_key")
     def validate_api_key(cls, v: str, info: ValidationInfo):
@@ -177,18 +166,16 @@ class DataSourceConfig(BaseSettings):
     mode: str = Field(
         default="dev",
         description="数据模式: live(CTP实时) | dev(Tushare 准实时)",
-        env=["MODE"],
+        alias="DATA_MODE",
     )
     source: str = Field(
-        default="tushare",
-        description="数据源类型",
-        env=["SOURCE"],
+        default="tushare", description="数据源类型", alias="DATA_SOURCE"
     )
     tushare_token: Optional[str] = Field(default=None, description="Tushare令牌")
 
     # CTP配置
-    ctp_userid: Optional[str] = Field(default=None, description="CTP用户ID")
-    ctp_password: Optional[str] = Field(default=None, description="CTP密码")
+    ctp_userid: str | None = Field(default=None, description="CTP用户ID")
+    ctp_password: str | None = Field(default=None, description="CTP密码")
     ctp_broker_id: str = Field(default="9999", description="CTP期货公司ID")
     ctp_md_address: str = Field(
         default="tcp://180.168.146.187:10131",
@@ -199,7 +186,7 @@ class DataSourceConfig(BaseSettings):
         description="CTP交易服务器",
     )
 
-    @field_validator("mode")
+    @field_validator("data_mode")
     def validate_mode(cls, v: str):
         """验证数据模式"""
         if v not in ("live", "dev"):
@@ -216,8 +203,8 @@ class DataSourceConfig(BaseSettings):
     @model_validator(mode="after")
     def validate_live_mode_requirements(self):
         """验证live模式的必需配置"""
-        mode = self.mode
-        if mode == "live":
+        data_mode = self.data_mode
+        if data_mode == "live":
             # 验证 CTP 配置
             if not self.ctp_userid:
                 raise ValueError("live模式需要配置CTP_USERID")
@@ -226,7 +213,7 @@ class DataSourceConfig(BaseSettings):
 
             logger.info("✅ live模式配置验证通过")
         else:
-            logger.info(f"ℹ️  使用 {mode} 模式（开发/测试模式）")
+            logger.info(f"ℹ️  使用 {data_mode} 模式（开发/测试模式）")
 
         return self
 
@@ -285,12 +272,12 @@ class LoggingConfig(BaseSettings):
     json_logs: bool = Field(
         default=False,
         description="Enable JSON structured logs for production",
-        env="LOG_JSON"
+        alias="LOG_JSON",
     )
     enable_colors: bool = Field(
         default=True,
         description="Enable colored console output (disabled for JSON logs)",
-        env="LOG_COLORS"
+        alias="LOG_COLORS",
     )
 
 
@@ -301,36 +288,66 @@ class AlertsConfig(BaseSettings):
     """
 
     # 邮件配置
-    smtp_server: str = Field(default="smtp.gmail.com", description="SMTP 服务器", env="SMTP_SERVER")
-    smtp_port: int = Field(default=587, description="SMTP 端口", env="SMTP_PORT")
-    email_sender: str = Field(default="cherryquant@example.com", description="发件人邮箱", env="EMAIL_SENDER")
-    email_username: str = Field(default="cherryquant@example.com", description="登录用户名", env="EMAIL_USERNAME")
-    email_password: str = Field(default="", description="邮箱密码/授权码", env="EMAIL_PASSWORD")
-    email_recipients: List[str] = Field(
+    smtp_server: str = Field(
+        default="smtp.gmail.com",
+        description="SMTP 服务",
+    )
+    smtp_port: int = Field(
+        default=587,
+        description="SMTP 端口",
+    )
+    email_sender: str = Field(
+        default="cherryquant@example.com",
+        description="发件人邮箱",
+    )
+    email_username: str = Field(
+        default="cherryquant@example.com",
+        description="登录用户名",
+    )
+    email_password: str = Field(
+        default="",
+        description="邮箱密码/授权码",
+    )
+    email_recipients: list[str] = Field(
         default_factory=lambda: ["admin@example.com"],
         description="收件人列表",
-        env="EMAIL_RECIPIENTS",
     )
 
     # 微信配置
-    wechat_webhook_url: str = Field(default="", description="企业微信 Webhook URL", env="WECHAT_WEBHOOK_URL")
-    wechat_enabled: bool = Field(default=False, description="是否启用微信通知", env="WECHAT_ENABLED")
+    wechat_webhook_url: str = Field(
+        default="",
+        description="企业微信 Webhook URL",
+    )
+    wechat_enabled: bool = Field(
+        default=False,
+        description="是否启用微信通知",
+    )
 
     # 钉钉配置
-    dingtalk_webhook_url: str = Field(default="", description="钉钉 Webhook URL", env="DINGTALK_WEBHOOK_URL")
-    dingtalk_enabled: bool = Field(default=False, description="是否启用钉钉通知", env="DINGTALK_ENABLED")
+    dingtalk_webhook_url: str = Field(
+        default="",
+        description="钉钉 Webhook URL",
+    )
+    dingtalk_enabled: bool = Field(
+        default=False,
+        description="是否启用钉钉通知",
+    )
 
     # 通用 Webhook 配置
-    alert_webhook_url: str = Field(default="", description="通用告警 Webhook 地址", env="ALERT_WEBHOOK_URL")
-    webhook_token: str = Field(default="", description="Webhook 认证 Token", env="WEBHOOK_TOKEN")
+    alert_webhook_url: str = Field(
+        default="",
+        description="通用告警 Webhook 地址",
+    )
+    webhook_token: str = Field(
+        default="",
+        description="Webhook 认证 Token",
+    )
 
     @field_validator("email_recipients", mode="before")
     @classmethod
-    def split_recipients(cls, v):  # type: ignore[override]
+    def split_recipients(cls, v: str):  # type: ignore[override]
         """支持逗号分隔字符串或列表两种形式"""
-        if isinstance(v, str):
-            return [item.strip() for item in v.split(",") if item.strip()]
-        return v
+        return [item.strip() for item in v.split(",") if item.strip()]
 
     class Config:
         env_file: str = ".env"

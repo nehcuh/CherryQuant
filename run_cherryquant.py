@@ -52,7 +52,9 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 
-async def create_strategy_settings(contract_resolver: Optional[ContractResolver] = None):
+async def create_strategy_settings(
+    contract_resolver: ContractResolver | None = None,
+):
     """创建策略设置（动态解析主力合约）"""
     logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ async def create_strategy_settings(contract_resolver: Optional[ContractResolver]
     commodity = TRADING_CONFIG.get("default_symbol", "rb2601")
     # 如果包含数字，提取品种代码
     import re
+
     commodity_code = re.sub(r"\d+", "", commodity).lower()
 
     # 默认交易所优先从配置读取，配置缺失时退化为 SHFE
@@ -68,9 +71,13 @@ async def create_strategy_settings(contract_resolver: Optional[ContractResolver]
     # 使用 ContractResolver 动态解析主力合约
     if contract_resolver:
         try:
-            dominant_contract = await contract_resolver.get_dominant_contract(commodity_code)
+            dominant_contract = await contract_resolver.get_dominant_contract(
+                commodity_code
+            )
             if dominant_contract:
-                logger.info(f"✅ 动态解析主力合约: {commodity_code} -> {dominant_contract}")
+                logger.info(
+                    f"✅ 动态解析主力合约: {commodity_code} -> {dominant_contract}"
+                )
                 vt_symbol = f"{dominant_contract}.{exchange}"
             else:
                 logger.warning(f"⚠️ 无法解析主力合约，使用默认: {commodity}")
@@ -229,7 +236,9 @@ def run_backtest_mode():
         logger.error(f"回测模式启动失败: {e}")
 
 
-async def run_simulation_mode(market_data_manager, history_manager, db_manager, ai_client, contract_resolver):
+async def run_simulation_mode(
+    market_data_manager, history_manager, db_manager, ai_client, contract_resolver
+):
     """运行模拟交易模式"""
     logger = logging.getLogger(__name__)
     logger.info("🚀 启动CherryQuant模拟交易模式")
@@ -279,7 +288,9 @@ async def run_simulation_mode(market_data_manager, history_manager, db_manager, 
         logger.error(f"模拟模式启动失败: {e}")
 
 
-async def simulate_ai_trading_loop(strategy_settings, market_data_manager, db_manager, ai_client):
+async def simulate_ai_trading_loop(
+    strategy_settings, market_data_manager, db_manager, ai_client
+):
     """模拟AI交易循环（5m 收盘对齐，限价+下一根5m失效）"""
     logger = logging.getLogger(__name__)
 
