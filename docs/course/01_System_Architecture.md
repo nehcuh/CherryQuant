@@ -15,37 +15,37 @@ CherryQuant 是一个基于 AI 驱动的量化交易系统，专为中国期货�
 CherryQuant 采用分层架构设计，主要分为以下几层：
 
 ```mermaid
-graph TD
-    User[用户/UI] --> App[应用层 (FastAPI/CLI)]
-    App --> Decision[AI 决策层]
-    App --> Trading[交易执行层]
+flowchart TD
+    User["用户/UI"] --> App["应用层 (FastAPI/CLI)"]
+    App --> Decision["AI 决策层"]
+    App --> Trading["交易执行层"]
     
-    subgraph "AI 决策层"
-        AI_Engine[AI Selection Engine]
-        Prompt_Eng[Prompt Engineering]
-        LLM_Client[LLM Client (OpenAI)]
+    subgraph ai_layer["AI 决策层"]
+        AI_Engine["AI Selection Engine"]
+        Prompt_Eng["Prompt Engineering"]
+        LLM_Client["LLM Client (OpenAI)"]
         AI_Engine --> Prompt_Eng
         Prompt_Eng --> LLM_Client
     end
     
-    subgraph "数据适配层"
-        MDM[Market Data Manager]
-        CR[Contract Resolver]
-        DB[Database Manager]
+    subgraph data_layer["数据适配层"]
+        MDM["Market Data Manager"]
+        CR["Contract Resolver"]
+        DB["Database Manager"]
         MDM --> CR
         MDM --> DB
     end
     
-    subgraph "交易执行层"
-        Strategy[CherryQuant Strategy]
-        Gateway[VNPy Gateway]
+    subgraph trading_layer["交易执行层"]
+        Strategy["CherryQuant Strategy"]
+        Gateway["VNPy Gateway"]
         Strategy --> Gateway
     end
     
     Decision --> MDM
     Trading --> MDM
-    Gateway --> CTP[CTP 接口]
-    MDM --> Tushare[Tushare API]
+    Gateway --> CTP["CTP 接口"]
+    MDM --> Tushare["Tushare API"]
 ```
 
 ### 核心组件说明
