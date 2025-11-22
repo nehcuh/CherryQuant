@@ -7,7 +7,7 @@ CherryQuant-QuantBox 桥接适配器
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Union
+from typing import Any, Union
 import pandas as pd
 
 from quantbox.services import MarketDataService, AsyncMarketDataService
@@ -33,7 +33,7 @@ class CherryQuantQuantBoxAdapter:
         self,
         use_async: bool = True,
         auto_warm: bool = True,
-        config: Optional[Dict[str, Any]] = None
+        config: dict[str, Any | None] = None
     ):
         """
         初始化适配器
@@ -71,9 +71,9 @@ class CherryQuantQuantBoxAdapter:
 
     async def get_trade_calendar_async(
         self,
-        exchanges: Optional[Union[str, List[str]]] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        exchanges: Union[str, list[str | None]] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> pd.DataFrame:
         """
         异步获取交易日历
@@ -107,9 +107,9 @@ class CherryQuantQuantBoxAdapter:
 
     def get_trade_calendar(
         self,
-        exchanges: Optional[Union[str, List[str]]] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        exchanges: Union[str, list[str | None]] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> pd.DataFrame:
         """
         同步获取交易日历
@@ -139,8 +139,8 @@ class CherryQuantQuantBoxAdapter:
 
     async def get_future_contracts_async(
         self,
-        exchanges: Optional[Union[str, List[str]]] = None,
-        date: Optional[str] = None,
+        exchanges: Union[str, list[str | None]] = None,
+        date: str | None = None,
     ) -> pd.DataFrame:
         """
         异步获取期货合约信息
@@ -171,8 +171,8 @@ class CherryQuantQuantBoxAdapter:
 
     def get_future_contracts(
         self,
-        exchanges: Optional[Union[str, List[str]]] = None,
-        date: Optional[str] = None,
+        exchanges: Union[str, list[str | None]] = None,
+        date: str | None = None,
     ) -> pd.DataFrame:
         """同步获取期货合约信息"""
         if self.use_async:
@@ -190,10 +190,10 @@ class CherryQuantQuantBoxAdapter:
 
     async def get_future_daily_async(
         self,
-        symbols: Optional[Union[str, List[str]]] = None,
-        exchanges: Optional[Union[str, List[str]]] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        symbols: Union[str, list[str | None]] = None,
+        exchanges: Union[str, list[str | None]] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> pd.DataFrame:
         """
         异步获取期货日线数据
@@ -228,10 +228,10 @@ class CherryQuantQuantBoxAdapter:
 
     def get_future_daily(
         self,
-        symbols: Optional[Union[str, List[str]]] = None,
-        exchanges: Optional[Union[str, List[str]]] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        symbols: Union[str, list[str | None]] = None,
+        exchanges: Union[str, list[str | None]] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> pd.DataFrame:
         """同步获取期货日线数据"""
         if self.use_async:
@@ -253,10 +253,10 @@ class CherryQuantQuantBoxAdapter:
 
     async def save_trade_calendar_async(
         self,
-        exchanges: Optional[Union[str, List[str]]] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        exchanges: Union[str, list[str | None]] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
         """
         异步保存交易日历
 
@@ -288,10 +288,10 @@ class CherryQuantQuantBoxAdapter:
 
     def save_trade_calendar(
         self,
-        exchanges: Optional[Union[str, List[str]]] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        exchanges: Union[str, list[str | None]] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
         """同步保存交易日历"""
         if self.use_async:
             return asyncio.run(self.save_trade_calendar_async(
@@ -308,7 +308,7 @@ class CherryQuantQuantBoxAdapter:
 
     # ==================== 数据格式转换 ====================
 
-    def quantbox_to_cherryquant_data(self, df: pd.DataFrame) -> List[MarketDataPoint]:
+    def quantbox_to_cherryquant_data(self, df: pd.DataFrame) -> list[MarketDataPoint]:
         """
         将 QuantBox 数据格式转换为 CherryQuant 格式
 
@@ -371,7 +371,7 @@ class CherryQuantQuantBoxAdapter:
 
     # ==================== 性能和状态 ====================
 
-    def get_adapter_info(self) -> Dict[str, Any]:
+    def get_adapter_info(self) -> dict[str, Any]:
         """
         获取适配器信息
 

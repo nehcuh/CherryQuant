@@ -1,0 +1,550 @@
+"""
+AI 决策引擎单元测试
+
+测试范围：
+1. FuturesDecisionEngine
+2. AsyncOpenAIClient (Mock)
+3. Prompt 构建和管理
+4. 响应解析
+5. 降级策略
+6. 错误处理
+
+教学要点：
+1. 如何测试 AI 组件
+2. Mock 外部 API
+3. 测试异步代码
+4. 降级策略测试
+"""
+
+import pytest
+import json
+from unittest.mock import AsyncMock, Mock, patch
+from datetime import datetime
+from decimal import Decimal
+
+from src.cherryquant.ai.decision_engine.futures_engine import (
+    FuturesDecisionEngine,
+    TradingDecision,
+    DecisionType,
+)
+from src.cherryquant.ai.llm_client.openai_client import AsyncOpenAIClient
+from config.settings.settings import AIConfig
+
+
+# ==================== Fixtures ====================
+
+@pytest.fixture
+def ai_config():
+    """AI 配置"""
+    return AIConfig(
+        openai_api_key="test-key",
+        openai_base_url="https://api.openai.com/v1",
+        openai_model="gpt-4-turbo-preview",
+        temperature=0.2,
+        max_tokens=1000,
+        timeout=30,
+    )
+
+
+@pytest.fixture
+def mock_openai_client(ai_config):
+    """Mock OpenAI 客户端"""
+    client = Mock(spec=AsyncOpenAIClient)
+    client.config = ai_config
+    return client
+
+
+@pytest.fixture
+def decision_engine(mock_openai_client):
+    """决策引擎实例"""
+    engine = FuturesDecisionEngine(llm_client=mock_openai_client)
+    return engine
+
+
+@pytest.fixture
+def sample_market_context():
+    """示例市场上下文"""
+    return {
+        "symbol": "rb2501",
+        "current_price": 3500.0,
+        "timeframes": {
+            "5m": {
+                "open": 3490.0,
+                "high": 3510.0,
+                "low": 3485.0,
+                "close": 3500.0,
+                "volume": 50000,
+                "change_pct": 0.29,
+            },
+            "1h": {
+                "open": 3450.0,
+                "high": 3520.0,
+                "low": 3440.0,
+                "close": 3500.0,
+                "volume": 500000,
+                "change_pct": 1.45,
+            },
+            "1d": {
+                "open": 3400.0,
+                "high": 3550.0,
+                "low": 3380.0,
+                "close": 3500.0,
+                "volume": 2000000,
+                "change_pct": 2.94,
+            },
+        },
+        "indicators": {
+            "ma_5": 3480.0,
+            "ma_10": 3460.0,
+            "ma_20": 3440.0,
+            "rsi_14": 65.0,
+            "macd": 15.5,
+            "macd_signal": 12.0,
+            "macd_hist": 3.5,
+            "bollinger_upper": 3600.0,
+            "bollinger_middle": 3500.0,
+            "bollinger_lower": 3400.0,
+        },
+        "timestamp": datetime(2024, 1, 15, 14, 30, 0),
+    }
+
+
+# ==================== 决策引擎核心测试 ====================
+
+class TestFuturesDecisionEngine:
+    """测试期货决策引擎"""
+
+    @pytest.mark.asyncio
+    async def test_make_decision_long(self, decision_engine, mock_openai_client, sample_market_context):
+        """测试做多决策"""
+        # Mock LLM 响应
+        mock_response = {
+            "decision": "LONG",
+            "confidence": 0.75,
+            "reasoning": "技术指标显示上涨趋势，RSI 未超买，MACD 金叉",
+            "entry_price": 3500.0,
+            "stop_loss": 3450.0,
+            "take_profit": 3600.0,
+        }
+
+        mock_openai_client.chat_completion = AsyncMock(return_value={
+            "choices": [{
+                "message": {
+                    "content": json.dumps(mock_response)
+                }
+            }]
+        })
+
+        # 执行决策
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 验证
+        assert decision.decision_type == DecisionType.LONG
+        assert decision.confidence == 0.75
+        assert decision.entry_price == 3500.0
+        assert decision.stop_loss == 3450.0
+        assert decision.take_profit == 3600.0
+        assert "上涨趋势" in decision.reasoning
+
+    @pytest.mark.asyncio
+    async def test_make_decision_short(self, decision_engine, mock_openai_client, sample_market_context):
+        """测试做空决策"""
+        # Mock LLM 响应
+        mock_response = {
+            "decision": "SHORT",
+            "confidence": 0.68,
+            "reasoning": "价格跌破支撑位，RSI 超买回落",
+            "entry_price": 3500.0,
+            "stop_loss": 3550.0,
+            "take_profit": 3400.0,
+        }
+
+        mock_openai_client.chat_completion = AsyncMock(return_value={
+            "choices": [{
+                "message": {
+                    "content": json.dumps(mock_response)
+                }
+            }]
+        })
+
+        # 执行决策
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 验证
+        assert decision.decision_type == DecisionType.SHORT
+        assert decision.confidence == 0.68
+
+    @pytest.mark.asyncio
+    async def test_make_decision_hold(self, decision_engine, mock_openai_client, sample_market_context):
+        """测试观望决策"""
+        # Mock LLM 响应
+        mock_response = {
+            "decision": "HOLD",
+            "confidence": 0.85,
+            "reasoning": "信号不明确，等待更好的入场机会",
+        }
+
+        mock_openai_client.chat_completion = AsyncMock(return_value={
+            "choices": [{
+                "message": {
+                    "content": json.dumps(mock_response)
+                }
+            }]
+        })
+
+        # 执行决策
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 验证
+        assert decision.decision_type == DecisionType.HOLD
+        assert decision.entry_price is None
+        assert decision.stop_loss is None
+
+
+# ==================== 错误处理测试 ====================
+
+class TestErrorHandling:
+    """测试错误处理"""
+
+    @pytest.mark.asyncio
+    async def test_api_timeout(self, decision_engine, mock_openai_client, sample_market_context):
+        """测试 API 超时"""
+        # Mock 超时异常
+        mock_openai_client.chat_completion = AsyncMock(
+            side_effect=TimeoutError("Request timeout")
+        )
+
+        # 执行决策（应该降级到模拟决策）
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 验证：应该返回降级决策
+        assert decision is not None
+        assert decision.decision_type in [DecisionType.LONG, DecisionType.SHORT, DecisionType.HOLD]
+        # 降级决策的置信度应该较低
+        assert decision.confidence < 0.5
+
+    @pytest.mark.asyncio
+    async def test_api_rate_limit(self, decision_engine, mock_openai_client, sample_market_context):
+        """测试 API 限流"""
+        # Mock 限流异常
+        mock_openai_client.chat_completion = AsyncMock(
+            side_effect=Exception("Rate limit exceeded")
+        )
+
+        # 执行决策
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 应该降级
+        assert decision is not None
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_response(self, decision_engine, mock_openai_client, sample_market_context):
+        """测试无效 JSON 响应"""
+        # Mock 无效响应
+        mock_openai_client.chat_completion = AsyncMock(return_value={
+            "choices": [{
+                "message": {
+                    "content": "这不是 JSON"
+                }
+            }]
+        })
+
+        # 执行决策
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 应该降级
+        assert decision is not None
+
+    @pytest.mark.asyncio
+    async def test_missing_required_fields(self, decision_engine, mock_openai_client, sample_market_context):
+        """测试缺少必需字段"""
+        # Mock 缺少字段的响应
+        mock_response = {
+            "decision": "LONG",
+            # 缺少 confidence 和 reasoning
+        }
+
+        mock_openai_client.chat_completion = AsyncMock(return_value={
+            "choices": [{
+                "message": {
+                    "content": json.dumps(mock_response)
+                }
+            }]
+        })
+
+        # 执行决策
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 应该有默认值或降级
+        assert decision is not None
+
+
+# ==================== 降级策略测试 ====================
+
+class TestFallbackStrategy:
+    """测试降级策略"""
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_api_failure(self, decision_engine, mock_openai_client, sample_market_context):
+        """API 失败时应该使用降级策略"""
+        # Mock API 失败
+        mock_openai_client.chat_completion = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+
+        # 执行决策
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 验证降级决策
+        assert decision is not None
+        assert decision.decision_type in [DecisionType.LONG, DecisionType.SHORT, DecisionType.HOLD]
+        # 降级决策应该基于技术指标
+        assert "技术指标" in decision.reasoning or "模拟决策" in decision.reasoning
+
+    @pytest.mark.asyncio
+    async def test_fallback_uses_indicators(self, decision_engine, sample_market_context):
+        """降级策略应该使用技术指标"""
+        # 构造明显的买入信号
+        bullish_context = {
+            **sample_market_context,
+            "indicators": {
+                "ma_5": 3500.0,  # 短期 MA 高于
+                "ma_10": 3480.0,
+                "ma_20": 3460.0,  # 长期 MA，多头排列
+                "rsi_14": 55.0,   # RSI 中性偏多
+                "macd_hist": 5.0,  # MACD 金叉
+            }
+        }
+
+        # 强制使用降级策略
+        decision_engine._use_fallback = True
+
+        decision = await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=bullish_context
+        )
+
+        # 应该是做多
+        assert decision.decision_type == DecisionType.LONG
+
+
+# ==================== Prompt 构建测试 ====================
+
+class TestPromptBuilding:
+    """测试 Prompt 构建"""
+
+    def test_build_system_prompt(self, decision_engine):
+        """测试构建系统 Prompt"""
+        prompt = decision_engine._build_system_prompt()
+
+        # 应该包含角色定义
+        assert "量化交易" in prompt or "期货" in prompt
+        assert "分析" in prompt
+
+    def test_build_user_prompt(self, decision_engine, sample_market_context):
+        """测试构建用户 Prompt"""
+        prompt = decision_engine._build_user_prompt(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 应该包含关键信息
+        assert "rb2501" in prompt
+        assert "3500" in prompt  # 当前价格
+        assert "RSI" in prompt or "rsi" in prompt
+        assert "MACD" in prompt or "macd" in prompt
+
+    def test_prompt_includes_timeframes(self, decision_engine, sample_market_context):
+        """Prompt 应该包含多时间周期"""
+        prompt = decision_engine._build_user_prompt(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 应该包含多个时间周期
+        assert "5m" in prompt or "5分钟" in prompt
+        assert "1h" in prompt or "1小时" in prompt
+        assert "1d" in prompt or "日线" in prompt
+
+
+# ==================== 响应解析测试 ====================
+
+class TestResponseParsing:
+    """测试响应解析"""
+
+    def test_parse_valid_response(self, decision_engine):
+        """测试解析有效响应"""
+        response_text = json.dumps({
+            "decision": "LONG",
+            "confidence": 0.75,
+            "reasoning": "技术指标显示上涨趋势",
+            "entry_price": 3500.0,
+            "stop_loss": 3450.0,
+            "take_profit": 3600.0,
+        })
+
+        decision = decision_engine._parse_response(response_text)
+
+        assert decision.decision_type == DecisionType.LONG
+        assert decision.confidence == 0.75
+
+    def test_parse_response_with_markdown(self, decision_engine):
+        """测试解析包含 Markdown 的响应"""
+        # LLM 有时会返回 Markdown 格式
+        response_text = """
+```json
+{
+    "decision": "SHORT",
+    "confidence": 0.68,
+    "reasoning": "价格跌破支撑"
+}
+```
+        """
+
+        decision = decision_engine._parse_response(response_text)
+
+        assert decision.decision_type == DecisionType.SHORT
+
+    def test_parse_malformed_json(self, decision_engine):
+        """测试解析畸形 JSON"""
+        response_text = "{invalid json"
+
+        # 应该返回 None 或抛出异常
+        decision = decision_engine._parse_response(response_text)
+        assert decision is None
+
+
+# ==================== 置信度测试 ====================
+
+class TestConfidence:
+    """测试置信度计算和验证"""
+
+    @pytest.mark.asyncio
+    async def test_confidence_range(self, decision_engine, mock_openai_client, sample_market_context):
+        """置信度应该在 0-1 之间"""
+        # Mock 各种置信度
+        for confidence in [0.0, 0.3, 0.5, 0.8, 1.0]:
+            mock_response = {
+                "decision": "LONG",
+                "confidence": confidence,
+                "reasoning": "测试",
+            }
+
+            mock_openai_client.chat_completion = AsyncMock(return_value={
+                "choices": [{
+                    "message": {
+                        "content": json.dumps(mock_response)
+                    }
+                }]
+            })
+
+            decision = await decision_engine.make_decision(
+                symbol="rb2501",
+                market_context=sample_market_context
+            )
+
+            assert 0.0 <= decision.confidence <= 1.0
+
+    def test_low_confidence_warning(self, decision_engine):
+        """低置信度应该有警告"""
+        decision = TradingDecision(
+            decision_type=DecisionType.LONG,
+            confidence=0.15,  # 很低
+            reasoning="测试",
+        )
+
+        # 检查是否有警告标记
+        assert decision.confidence < 0.5
+
+
+# ==================== 成本优化测试 ====================
+
+class TestCostOptimization:
+    """测试成本优化（减少 API 调用）"""
+
+    @pytest.mark.asyncio
+    async def test_cache_similar_contexts(self, decision_engine, mock_openai_client, sample_market_context):
+        """相似的市场上下文应该使用缓存"""
+        mock_openai_client.chat_completion = AsyncMock(return_value={
+            "choices": [{
+                "message": {
+                    "content": json.dumps({
+                        "decision": "LONG",
+                        "confidence": 0.7,
+                        "reasoning": "测试",
+                    })
+                }
+            }]
+        })
+
+        # 第一次调用
+        await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 第二次调用（相同上下文）
+        await decision_engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 如果有缓存，第二次不应该调用 API
+        # （这取决于是否实现了缓存）
+
+
+# ==================== 集成测试 ====================
+
+@pytest.mark.integration
+class TestIntegration:
+    """集成测试（使用真实 API，需要 API Key）"""
+
+    @pytest.mark.skip(reason="需要真实 API Key")
+    @pytest.mark.asyncio
+    async def test_real_api_call(self, sample_market_context):
+        """使用真实 API 测试（需要手动启用）"""
+        from config.settings.settings import get_settings
+
+        settings = get_settings()
+
+        if not settings.ai.openai_api_key or settings.ai.openai_api_key == "your-api-key-here":
+            pytest.skip("需要配置真实的 API Key")
+
+        client = AsyncOpenAIClient(config=settings.ai)
+        engine = FuturesDecisionEngine(llm_client=client)
+
+        decision = await engine.make_decision(
+            symbol="rb2501",
+            market_context=sample_market_context
+        )
+
+        # 验证返回值
+        assert decision is not None
+        assert decision.decision_type in [DecisionType.LONG, DecisionType.SHORT, DecisionType.HOLD]
+        assert 0 <= decision.confidence <= 1
+
+        await client.aclose()

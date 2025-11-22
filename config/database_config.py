@@ -1,6 +1,5 @@
 """
 CherryQuant 数据库配置
-⚠️  迁移至 MongoDB - PostgreSQL 配置已移除
 """
 
 import os

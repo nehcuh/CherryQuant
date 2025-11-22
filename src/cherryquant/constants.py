@@ -80,3 +80,38 @@ EXCHANGE_TO_TUSHARE = {
     "CFFEX": "CFX",
     "INE": "INE",  # 上海国际能源交易中心
 }
+
+
+# ==================== Backtest Constants ====================
+
+class BacktestConstants:
+    """回测系统常量"""
+
+    # 默认回测参数
+    DEFAULT_INITIAL_CAPITAL = 1_000_000.0  # 初始资金：100万
+    DEFAULT_COMMISSION_RATE = 0.0003       # 手续费率：万分之3
+    DEFAULT_SLIPPAGE = 0.0001              # 滑点：万分之1
+
+    # 性能指标计算参数
+    TRADING_DAYS_PER_YEAR = 250            # 一年交易日数
+    RISK_FREE_RATE = 0.03                  # 无风险利率：3%
+
+    # 订单类型
+    ORDER_TYPE_MARKET = "MARKET"           # 市价单
+    ORDER_TYPE_LIMIT = "LIMIT"             # 限价单
+    ORDER_TYPE_STOP = "STOP"               # 止损单
+
+    # 订单方向
+    ORDER_SIDE_BUY = "BUY"                 # 买入
+    ORDER_SIDE_SELL = "SELL"               # 卖出
+
+    # 订单状态
+    ORDER_STATUS_PENDING = "PENDING"       # 待成交
+    ORDER_STATUS_FILLED = "FILLED"         # 已成交
+    ORDER_STATUS_CANCELLED = "CANCELLED"   # 已取消
+    ORDER_STATUS_REJECTED = "REJECTED"     # 已拒绝
+
+    # 持仓方向
+    POSITION_LONG = "LONG"                 # 多头
+    POSITION_SHORT = "SHORT"               # 空头
+    POSITION_FLAT = "FLAT"                 # 空仓

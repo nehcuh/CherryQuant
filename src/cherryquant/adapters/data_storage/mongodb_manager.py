@@ -2,8 +2,10 @@
 MongoDB Connection Manager
 基于 motor 的异步 MongoDB 连接管理器
 """
+from __future__ import annotations
+
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
 from datetime import datetime
 import asyncio
 
@@ -23,8 +25,8 @@ class MongoDBConnectionManager:
         database: str = "cherryquant",
         min_pool_size: int = 5,
         max_pool_size: int = 50,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
+        username: str | None = None,
+        password: str | None = None,
         server_selection_timeout_ms: int = 5000,
         connect_timeout_ms: int = 10000,
     ):
@@ -51,15 +53,15 @@ class MongoDBConnectionManager:
         self.connect_timeout_ms = connect_timeout_ms
 
         # 异步客户端（用于应用程序）
-        self._async_client: Optional[AsyncIOMotorClient] = None
-        self._async_db: Optional[AsyncIOMotorDatabase] = None
+        self._async_client: AsyncIOMotorClient | None = None
+        self._async_db: AsyncIOMotorDatabase | None = None
 
         # 同步客户端（用于初始化和健康检查）
-        self._sync_client: Optional[MongoClient] = None
+        self._sync_client: MongoClient | None = None
 
         self._is_connected = False
 
-    def _build_connection_options(self) -> Dict[str, Any]:
+    def _build_connection_options(self) -> dict[str, Any]:
         """构建连接选项"""
         options = {
             "minPoolSize": self.min_pool_size,
@@ -220,7 +222,7 @@ class MongoDBConnectionManager:
         await db.drop_collection(collection_name)
         logger.info(f"✓ Dropped collection: {collection_name}")
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """
         获取数据库统计信息
 
@@ -231,7 +233,7 @@ class MongoDBConnectionManager:
         stats = await db.command("dbStats")
         return stats
 
-    async def get_collection_stats(self, collection_name: str) -> Dict[str, Any]:
+    async def get_collection_stats(self, collection_name: str) -> dict[str, Any]:
         """
         获取集合统计信息
 
@@ -258,8 +260,8 @@ class MongoDBConnectionManager:
 class MongoDBConnectionPool:
     """MongoDB 连接池管理器（单例模式）"""
 
-    _instance: Optional['MongoDBConnectionPool'] = None
-    _manager: Optional[MongoDBConnectionManager] = None
+    _instance: MongoDBConnectionPool | None = None
+    _manager: MongoDBConnectionManager | None = None
     _lock = asyncio.Lock()
 
     def __new__(cls):

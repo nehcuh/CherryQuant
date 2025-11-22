@@ -7,7 +7,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Callable, List
+from typing import Callable
 
 # 使用 MongoDB 版本的 DatabaseManager（通过依赖注入传入实例）
 from cherryquant.adapters.data_storage.database_manager import DatabaseManager
@@ -36,7 +36,7 @@ class _Aggregator:
         self.symbol = symbol
         self.exchange = exchange
         self.tf = tf
-        self.current: Optional[BarState] = None
+        self.current: BarState | None = None
 
     def _bucket_end(self, ts: datetime) -> datetime:
         if self.tf == TimeFrame.FIVE_MIN:
@@ -56,7 +56,7 @@ class _Aggregator:
             end = ts.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=mins)
         return end
 
-    def update(self, ts: datetime, price: float, volume: Optional[int] = None, open_interest: Optional[int] = None) -> Optional[BarState]:
+    def update(self, ts: datetime, price: float, volume: int | None = None, open_interest: int | None = None) -> BarState | None:
         """返回完成的 BarState（若有）"""
         if self.current is None:
             end = self._bucket_end(ts)
@@ -76,14 +76,14 @@ class _Aggregator:
         self._accumulate(price, volume, open_interest)
         return None
 
-    def flush_if_due(self, now_ts: datetime) -> Optional[BarState]:
+    def flush_if_due(self, now_ts: datetime) -> BarState | None:
         if self.current and now_ts >= self.current.end:
             finished = self.current
             self.current = None
             return finished
         return None
 
-    def _accumulate(self, price: float, volume: Optional[int], open_interest: Optional[int]):
+    def _accumulate(self, price: float, volume: int | None, open_interest: int | None):
         if self.current is None:
             return
         self.current.close = price
@@ -118,8 +118,8 @@ class RealtimeRecorder:
         self.gateway = gateway
         self.db: DatabaseManager = db
         # symbol_key: {tf: aggregator}
-        self.aggregators: Dict[str, Dict[TimeFrame, _Aggregator]] = {}
-        self._tick_task: Optional[asyncio.Task] = None
+        self.aggregators: dict[str, dict[TimeFrame, _Aggregator]] = {}
+        self._tick_task: asyncio.Task | None = None
         self._running = False
 
     def _symbol_key(self, vt_symbol: str) -> (str, str):
@@ -141,7 +141,7 @@ class RealtimeRecorder:
                 TimeFrame.HOURLY: _Aggregator(sym, ex, TimeFrame.HOURLY),
             }
 
-    async def start(self, vt_symbols: List[str]):
+    async def start(self, vt_symbols: list[str]):
         self._running = True
         # 订阅市场数据
         try:
@@ -170,8 +170,8 @@ class RealtimeRecorder:
         try:
             ts: datetime = getattr(tick, 'datetime', None) or getattr(tick, 'trade_time', None) or datetime.now()
             price: float = float(getattr(tick, 'last_price', 0.0) or 0.0)
-            vol: Optional[int] = getattr(tick, 'volume', None)
-            oi: Optional[int] = getattr(tick, 'open_interest', None)
+            vol: int | None = getattr(tick, 'volume', None)
+            oi: int | None = getattr(tick, 'open_interest', None)
             vt_symbol: str = getattr(tick, 'vt_symbol', '')
             if not vt_symbol or price <= 0:
                 return
@@ -179,7 +179,7 @@ class RealtimeRecorder:
             self._ensure_aggs(vt_symbol)
             sym, ex = self._symbol_key(vt_symbol)
             key = f"{sym}.{ex}"
-            finished: List[BarState] = []
+            finished: list[BarState] = []
             for agg in self.aggregators[key].values():
                 done = agg.update(ts, price, vol, oi)
                 if done:
@@ -190,10 +190,10 @@ class RealtimeRecorder:
         except Exception as e:
             logger.error(f"处理 tick 失败: {e}")
 
-    async def _flush(self, symbol: str, exchange: str, bars: List[BarState]):
+    async def _flush(self, symbol: str, exchange: str, bars: list[BarState]):
         # 将完成的 bars 写入 DB
         try:
-            points: List[MarketDataPoint] = []
+            points: list[MarketDataPoint] = []
             tf_map = {
                 timedelta(minutes=5): TimeFrame.FIVE_MIN,
                 timedelta(minutes=10): TimeFrame.TEN_MIN,

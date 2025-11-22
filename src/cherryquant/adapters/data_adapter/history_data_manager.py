@@ -7,7 +7,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List
+from typing import Any
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -348,7 +348,7 @@ class HistoryDataManager:
             except Exception as e:
                 logger.error(f"保存到{db_name}时出错: {e}")
 
-    def _get_cached_data(self, key: str) -> Optional[pd.DataFrame]:
+    def _get_cached_data(self, key: str) -> pd.DataFrame | None:
         """获取缓存数据"""
         if key in self.data_cache:
             df, timestamp = self.data_cache[key]
@@ -372,7 +372,7 @@ class HistoryDataManager:
 
         self.data_cache[key] = (df, datetime.now())
 
-    def get_cache_info(self) -> Dict[str, Any]:
+    def get_cache_info(self) -> dict[str, Any]:
         """获取缓存信息 - 增强版"""
         cache_info = {
             "cache_size": len(self.data_cache),
@@ -395,7 +395,7 @@ class HistoryDataManager:
 
     # ==================== 新增功能方法 ====================
 
-    async def get_contract_info(self, symbol: str, exchange: str) -> Dict[str, Any]:
+    async def get_contract_info(self, symbol: str, exchange: str) -> dict[str, Any]:
         """
         获取合约信息
 
@@ -435,9 +435,9 @@ class HistoryDataManager:
 
     async def batch_get_historical_data(
         self,
-        requests: List[Dict[str, Any]],
+        requests: list[dict[str, Any]],
         prefer_quantbox: bool = True
-    ) -> Dict[str, pd.DataFrame]:
+    ) -> dict[str, pd.DataFrame]:
         """
         批量获取历史数据
 
@@ -508,7 +508,7 @@ class HistoryDataManager:
             logger.error(f"测试 QuantBox 连接失败: {e}")
             return False
 
-    def get_system_status(self) -> Dict[str, Any]:
+    def get_system_status(self) -> dict[str, Any]:
         """
         获取系统状态
 
@@ -583,7 +583,7 @@ class HistoryDataManager:
 class DatabaseConnection:
     """数据库连接基类"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.is_connected = False
 
@@ -613,7 +613,7 @@ class DatabaseConnection:
 class PostgreSQLConnection(DatabaseConnection):
     """PostgreSQL 连接"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.conn = None
 

@@ -6,7 +6,7 @@ OpenAI客户端封装
 import json
 import asyncio
 import re
-from typing import Dict, Any, Optional, Protocol
+from typing import Any, Protocol
 
 from openai import AsyncOpenAI
 import logging
@@ -23,10 +23,10 @@ class LLMClient(Protocol):
         self,
         system_prompt: str,
         user_prompt: str,
-        model: Optional[str] = None,
+        model: str | None = None,
         temperature: float = 0.1,
         max_tokens: int = 1000,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any | None]:
         """获取AI交易决策"""
         ...
 
@@ -76,10 +76,10 @@ class AsyncOpenAIClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        model: Optional[str] = None,
+        model: str | None = None,
         temperature: float = 0.1,
         max_tokens: int = 1000,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any | None]:
         """
         获取AI交易决策
 
@@ -150,7 +150,7 @@ class AsyncOpenAIClient:
             logger.error(f"调用OpenAI API失败: {e}")
             return None
 
-    def _validate_decision(self, decision: Dict[str, Any]) -> bool:
+    def _validate_decision(self, decision: dict[str, Any]) -> bool:
         """
         验证交易决策的格式和字段
 
@@ -197,7 +197,7 @@ class AsyncOpenAIClient:
 
         return True
 
-    def _parse_decision_json(self, content: str) -> Dict[str, Any]:
+    def _parse_decision_json(self, content: str) -> dict[str, Any]:
         """从模型回复中提取 JSON（支持 ```json 代码块、前后噪声）"""
         text = (content or "").strip()
         # 优先匹配 ```json ... ``` 代码块
@@ -257,10 +257,10 @@ class AsyncOpenAIClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        model: Optional[str] = None,
+        model: str | None = None,
         temperature: float = 0.1,
         max_tokens: int = 1000,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any | None]:
         return await self.get_trading_decision(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -300,10 +300,10 @@ class OpenAIClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        model: Optional[str] = None,
+        model: str | None = None,
         temperature: float = 0.1,
         max_tokens: int = 1000,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any | None]:
         """同步版本 - 仍然使用事件循环执行异步操作"""
         import asyncio
         loop = asyncio.new_event_loop()

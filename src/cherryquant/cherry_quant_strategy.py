@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 from vnpy_ctastrategy import CtaTemplate, StopOrder, BarGenerator, ArrayManager
 from vnpy.trader.object import TickData, BarData, OrderData, TradeData, PositionData, AccountData, ContractData
@@ -152,7 +152,7 @@ class CherryQuantStrategy(CtaTemplate):
         except Exception as e:
             self.write_log(f"AI决策过程错误: {e}")
 
-    def _execute_decision(self, decision: Dict[str, Any], current_price: float):
+    def _execute_decision(self, decision: dict[str, Any], current_price: float):
         """执行AI交易决策"""
         try:
             signal = decision.get("signal")
@@ -188,7 +188,7 @@ class CherryQuantStrategy(CtaTemplate):
         except Exception as e:
             self.write_log(f"执行AI决策错误: {e}")
 
-    def _execute_buy(self, price: float, quantity: int, decision: Dict[str, Any]):
+    def _execute_buy(self, price: float, quantity: int, decision: dict[str, Any]):
         """执行买入开仓"""
         if self.current_position >= 0:  # 没有空头持仓
             # 开多仓
@@ -197,7 +197,7 @@ class CherryQuantStrategy(CtaTemplate):
                 self.write_log(f"开多仓委托: {quantity}手 @ {price}")
                 self._set_stop_targets(decision, Direction.LONG, order_id)
 
-    def _execute_sell(self, price: float, quantity: int, decision: Dict[str, Any]):
+    def _execute_sell(self, price: float, quantity: int, decision: dict[str, Any]):
         """执行卖出开仓"""
         if self.current_position <= 0:  # 没有多头持仓
             # 开空仓
@@ -206,7 +206,7 @@ class CherryQuantStrategy(CtaTemplate):
                 self.write_log(f"开空仓委托: {quantity}手 @ {price}")
                 self._set_stop_targets(decision, Direction.SHORT, order_id)
 
-    def _execute_close(self, price: float, decision: Dict[str, Any]):
+    def _execute_close(self, price: float, decision: dict[str, Any]):
         """执行平仓"""
         if self.current_position > 0:
             # 平多仓
@@ -219,7 +219,7 @@ class CherryQuantStrategy(CtaTemplate):
             if order_id:
                 self.write_log(f"平空仓委托: {abs(self.current_position)}手 @ {price}")
 
-    def _set_stop_targets(self, decision: Dict[str, Any], direction: Direction, order_id: str):
+    def _set_stop_targets(self, decision: dict[str, Any], direction: Direction, order_id: str):
         """设置止损止盈目标"""
         try:
             profit_target = decision.get("profit_target", 0)
@@ -257,7 +257,7 @@ class CherryQuantStrategy(CtaTemplate):
             self.write_log(f"仓位调整错误: {e}")
             return 0
 
-    def _get_account_info(self) -> Dict[str, Any]:
+    def _get_account_info(self) -> dict[str, Any]:
         """获取账户信息"""
         try:
             # 这里应该从vn.py获取真实的账户信息
@@ -277,7 +277,7 @@ class CherryQuantStrategy(CtaTemplate):
                 "account_value": 100000.0
             }
 
-    def _get_positions_info(self) -> List[Dict[str, Any]]:
+    def _get_positions_info(self) -> list[dict[str, Any]]:
         """获取持仓信息"""
         try:
             positions = []

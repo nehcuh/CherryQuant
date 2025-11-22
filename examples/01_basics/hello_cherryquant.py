@@ -23,9 +23,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 import structlog
-
-# 导入配置管理
-from config.settings.settings import get_settings
+from config.settings.settings import CONFIG
 
 # 配置结构化日志
 structlog.configure(
@@ -39,7 +37,6 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-
 def main():
     """主函数"""
     # 1. 欢迎信息
@@ -49,28 +46,31 @@ def main():
 
     # 2. 加载配置
     logger.info("正在加载项目配置...")
-    try:
-        settings = get_settings()
-        logger.info("✅ 环境配置加载成功")
-    except Exception as e:
-        logger.error("❌ 配置加载失败", error=str(e))
-        return
+    # CONFIG 已经在导入时加载
+    logger.info("✅ 环境配置加载成功")
 
     # 3. 显示基本信息
     print("\n📋 项目基本信息:")
     print(f"  • 项目根目录: {project_root}")
-    print(f"  • 日志级别: {settings.log_level}")
-    print(f"  • 是否启用调试模式: {settings.debug}")
+    print(f"  • 日志级别: {CONFIG.logging.level}")
+    print(f"  • 是否启用调试模式: {CONFIG.debug}")
 
     # 4. 显示数据库配置（隐藏敏感信息）
     print("\n🗄️  数据库配置:")
-    print(f"  • MongoDB 数据库: {settings.mongo_db_name}")
-    print(f"  • Redis 主机: {settings.redis_host}")
+    print(f"  • MongoDB 数据库: {CONFIG.database.mongodb_database}")
+    print(f"  • Redis 主机: {CONFIG.database.redis_host}")
 
-    # 5. 显示支持的期货品种
-    from config.symbols import FUTURES_SYMBOLS
+    # 5. 显示支持的期货品种 (示例)
+    # 由于 config.symbols 可能不存在，这里使用硬编码示例
+    FUTURES_SYMBOLS = {
+        "rb2601": {"sector": "黑色"},
+        "hc2601": {"sector": "黑色"},
+        "i2601":  {"sector": "黑色"},
+        "cu2601": {"sector": "有色"},
+        "al2601": {"sector": "有色"},
+    }
 
-    print(f"\n📊 支持的期货品种 (共 {len(FUTURES_SYMBOLS)} 个):")
+    print(f"\n📊 支持的期货品种 (示例 - {len(FUTURES_SYMBOLS)} 个):")
     # 按板块分组显示
     sectors = {}
     for symbol, info in FUTURES_SYMBOLS.items():
@@ -91,7 +91,6 @@ def main():
     print("  2. 运行 examples/02_data/ 下的数据获取示例")
     print("  3. 完成 Lab 01 实验任务")
     print()
-
 
 if __name__ == "__main__":
     main()

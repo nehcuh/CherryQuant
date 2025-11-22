@@ -7,7 +7,7 @@ CherryQuant 数据库管理器 (MongoDB 版本)
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any
 from decimal import Decimal
 from dataclasses import dataclass, asdict
 
@@ -63,7 +63,7 @@ class DatabaseManager:
         symbol: str,
         exchange: str,
         timeframe: TimeFrame,
-        data_points: List[MarketDataPoint]
+        data_points: list[MarketDataPoint]
     ) -> bool:
         """
         存储市场数据到 MongoDB
@@ -131,10 +131,10 @@ class DatabaseManager:
         symbol: str,
         exchange: str,
         timeframe: TimeFrame,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: Optional[int] = None
-    ) -> List[MarketDataPoint]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int | None = None
+    ) -> list[MarketDataPoint]:
         """
         获取市场数据
 
@@ -213,7 +213,7 @@ class DatabaseManager:
         symbol: str,
         exchange: str,
         timeframe: TimeFrame,
-        indicators: List[TechnicalIndicators]
+        indicators: list[TechnicalIndicators]
     ) -> bool:
         """
         存储技术指标
@@ -302,10 +302,10 @@ class DatabaseManager:
         symbol: str,
         exchange: str,
         timeframe: TimeFrame,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: Optional[int] = None
-    ) -> List[TechnicalIndicators]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int | None = None
+    ) -> list[TechnicalIndicators]:
         """
         获取技术指标
 
@@ -381,7 +381,7 @@ class DatabaseManager:
 
     # ==================== AI决策管理 ====================
 
-    async def store_ai_decision(self, decision: Dict[str, Any]) -> bool:
+    async def store_ai_decision(self, decision: dict[str, Any]) -> bool:
         """
         存储AI决策记录
 
@@ -428,12 +428,12 @@ class DatabaseManager:
 
     async def get_ai_decisions(
         self,
-        symbol: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        status: Optional[str] = None,
-        limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+        symbol: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        status: str | None = None,
+        limit: int | None = None
+    ) -> list[dict[str, Any]]:
         """Get AI decision records from the MongoDB collection."""
         try:
             collection = self.mongodb_manager.get_collection("ai_decisions")
@@ -495,8 +495,8 @@ class DatabaseManager:
         self,
         decision_id: str,
         status: str,
-        executed_at: Optional[datetime] = None,
-        execution_price: Optional[float] = None
+        executed_at: datetime | None = None,
+        execution_price: float | None = None
     ) -> bool:
         """Update the status of an AI decision document."""
         try:
@@ -526,7 +526,7 @@ class DatabaseManager:
 
     # ==================== 交易记录管理 ====================
 
-    async def create_trade_entry(self, trade: Dict[str, Any]) -> Optional[str]:
+    async def create_trade_entry(self, trade: dict[str, Any]) -> str | None:
         """
         创建交易记录
 
@@ -568,8 +568,8 @@ class DatabaseManager:
         self,
         trade_id: str,
         exit_price: float,
-        exit_time: Optional[datetime] = None,
-        exit_fee: Optional[float] = None
+        exit_time: datetime | None = None,
+        exit_fee: float | None = None
     ) -> bool:
         """
         关闭交易
@@ -639,7 +639,7 @@ class DatabaseManager:
 
     # ==================== 组合和策略管理 ====================
 
-    async def record_trade(self, trade_data: Dict[str, Any]) -> bool:
+    async def record_trade(self, trade_data: dict[str, Any]) -> bool:
         """
         记录交易（简化版，直接调用 create_trade_entry）
 
@@ -652,7 +652,7 @@ class DatabaseManager:
         trade_id = await self.create_trade_entry(trade_data)
         return trade_id is not None
 
-    async def record_portfolio_status(self, portfolio_data: Dict[str, Any]) -> bool:
+    async def record_portfolio_status(self, portfolio_data: dict[str, Any]) -> bool:
         """
         记录投资组合状态
 
@@ -687,7 +687,7 @@ class DatabaseManager:
             logger.error(f"记录投资组合状态失败 (MongoDB): {e}")
             return False
 
-    async def record_strategy_performance(self, strategy_id: str, performance_data: Dict[str, Any]) -> bool:
+    async def record_strategy_performance(self, strategy_id: str, performance_data: dict[str, Any]) -> bool:
         """
         记录策略表现（简化实现）
 
@@ -702,7 +702,7 @@ class DatabaseManager:
         logger.warning("record_strategy_performance not fully implemented yet")
         return True
 
-    async def get_strategy_performance(self, strategy_id: str, days: int = 7) -> List[Dict[str, Any]]:
+    async def get_strategy_performance(self, strategy_id: str, days: int = 7) -> list[dict[str, Any]]:
         """
         获取策略表现（简化实现）
 
@@ -717,7 +717,7 @@ class DatabaseManager:
         logger.warning("get_strategy_performance not fully implemented yet")
         return []
 
-    async def get_portfolio_history(self, days: int = 30) -> List[Dict[str, Any]]:
+    async def get_portfolio_history(self, days: int = 30) -> list[dict[str, Any]]:
         """
         获取投资组合历史
 
@@ -756,11 +756,11 @@ class DatabaseManager:
 
     async def get_trade_history(
         self,
-        symbol: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: Optional[int] = 100
-    ) -> List[Dict[str, Any]]:
+        symbol: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int | None = 100
+    ) -> list[dict[str, Any]]:
         """
         获取交易历史
 
@@ -843,7 +843,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"清除缓存失败: {e}")
 
-    async def _get_cache(self, key: str) -> Optional[Any]:
+    async def _get_cache(self, key: str) -> Any | None:
         """从 Redis 获取缓存"""
         try:
             import json
@@ -866,7 +866,7 @@ class DatabaseManager:
 
     # ==================== 统计和维护 ====================
 
-    async def get_data_statistics(self) -> Dict[str, Any]:
+    async def get_data_statistics(self) -> dict[str, Any]:
         """
         获取数据统计信息
 

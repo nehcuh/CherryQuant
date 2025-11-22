@@ -7,7 +7,7 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any
 import asyncio
 
 from ..llm_client.openai_client import LLMClient
@@ -27,9 +27,9 @@ class AISelectionEngine:
     def __init__(
         self,
         ai_client: LLMClient,
-        tushare_token: Optional[str] = None,
+        tushare_token: str | None = None,
         contract_resolver=None,
-        market_data_manager: Optional[MultiSymbolDataManager] = None,
+        market_data_manager: MultiSymbolDataManager | None = None,
     ):
         """初始化AI选择引擎
 
@@ -61,8 +61,8 @@ class AISelectionEngine:
 
     async def resolve_commodities_to_contracts(
         self,
-        commodities: List[str]
-    ) -> Dict[str, str]:
+        commodities: list[str]
+    ) -> dict[str, str]:
         """
         将品种代码列表解析为主力合约
 
@@ -86,12 +86,12 @@ class AISelectionEngine:
 
     async def get_optimal_trade_decision(
         self,
-        account_info: Dict[str, Any] = None,
-        current_positions: List[Dict[str, Any]] = None,
-        market_scope: Dict[str, Any] = None,
-        commodities: Optional[List[str]] = None,
+        account_info: dict[str, Any] = None,
+        current_positions: list[dict[str, Any]] = None,
+        market_scope: dict[str, Any] = None,
+        commodities: list[str | None] = None,
         max_retries: int = 2
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any | None]:
         """
         获取AI最优交易决策（包含品种选择）
 
@@ -176,7 +176,7 @@ class AISelectionEngine:
             logger.error(f"AI选择决策过程严重错误: {e}")
             return None
 
-    def _clean_and_parse_json(self, response_str: str) -> Optional[Dict[str, Any]]:
+    def _clean_and_parse_json(self, response_str: str) -> dict[str, Any | None]:
         """清理并解析JSON字符串（处理Markdown代码块）"""
         try:
             # 移除Markdown代码块标记
@@ -188,7 +188,7 @@ class AISelectionEngine:
             logger.error(f"JSON解析失败: {e}")
             return None
 
-    async def _get_comprehensive_market_data(self, market_scope: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+    async def _get_comprehensive_market_data(self, market_scope: dict[str, Any] = None) -> dict[str, Any | None]:
         """获取全面的市场数据"""
         try:
             # 解析市场范围配置
@@ -229,7 +229,7 @@ class AISelectionEngine:
             logger.error(f"获取综合市场数据失败: {e}")
             return None
 
-    def _calculate_market_statistics(self, exchange_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_market_statistics(self, exchange_data: dict[str, Any]) -> dict[str, Any]:
         """计算市场统计信息"""
         try:
             all_contracts = []
@@ -282,9 +282,9 @@ class AISelectionEngine:
 
     def _build_ai_selection_prompt(
         self,
-        market_data: Dict[str, Any],
-        account_info: Dict[str, Any],
-        current_positions: List[Dict[str, Any]]
+        market_data: dict[str, Any],
+        account_info: dict[str, Any],
+        current_positions: list[dict[str, Any]]
     ) -> str:
         """构造AI选择提示词"""
         try:
@@ -339,7 +339,7 @@ class AISelectionEngine:
             logger.error(f"构造AI选择提示词失败: {e}")
             return "数据构造失败，无法进行分析"
 
-    def _format_contract_data_for_prompt(self, exchange_data: Dict[str, Any]) -> str:
+    def _format_contract_data_for_prompt(self, exchange_data: dict[str, Any]) -> str:
         """格式化合约数据用于AI提示词"""
         try:
             formatted_parts = []
@@ -370,7 +370,7 @@ class AISelectionEngine:
             logger.error(f"格式化合约数据失败: {e}")
             return "数据格式化失败"
 
-    def _format_positions_for_prompt(self, positions: List[Dict[str, Any]]) -> str:
+    def _format_positions_for_prompt(self, positions: list[dict[str, Any]]) -> str:
         """格式化持仓信息"""
         try:
             if not positions:
@@ -386,7 +386,7 @@ class AISelectionEngine:
             logger.error(f"格式化持仓信息失败: {e}")
             return "持仓信息格式化失败"
 
-    def _calculate_sector_performance(self, exchange_data: Dict[str, Any]) -> str:
+    def _calculate_sector_performance(self, exchange_data: dict[str, Any]) -> str:
         """计算板块表现"""
         try:
             sectors = {
@@ -419,7 +419,7 @@ class AISelectionEngine:
             logger.error(f"计算板块表现失败: {e}")
             return "板块分析失败"
 
-    def _generate_correlation_summary(self, exchange_data: Dict[str, Any]) -> str:
+    def _generate_correlation_summary(self, exchange_data: dict[str, Any]) -> str:
         """生成相关性分析摘要"""
         try:
             # 简化的相关性分析
@@ -430,7 +430,7 @@ class AISelectionEngine:
             logger.error(f"生成相关性摘要失败: {e}")
             return "相关性分析失败"
 
-    def _get_default_account_info(self) -> Dict[str, Any]:
+    def _get_default_account_info(self) -> dict[str, Any]:
         """获取默认账户信息"""
         return {
             "account_value": self.portfolio["total_value"],
@@ -440,7 +440,7 @@ class AISelectionEngine:
             "daily_pnl_pct": 0.0
         }
 
-    def _validate_selection_decision(self, decision: Dict[str, Any], market_data: Dict[str, Any] = None) -> bool:
+    def _validate_selection_decision(self, decision: dict[str, Any], market_data: dict[str, Any] = None) -> bool:
         """验证AI选择决策的格式和业务逻辑"""
         try:
             if not isinstance(decision, dict):
@@ -529,7 +529,7 @@ class AISelectionEngine:
         except Exception as e:
             logger.error(f"更新投资组合失败: {e}")
 
-    def get_portfolio_summary(self) -> Dict[str, Any]:
+    def get_portfolio_summary(self) -> dict[str, Any]:
         """获取投资组合摘要"""
         return {
             "total_value": self.portfolio["total_value"],

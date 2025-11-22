@@ -15,37 +15,37 @@ CherryQuant 是一个基于 AI 驱动的量化交易系统，专为中国期货�
 CherryQuant 采用分层架构设计，主要分为以下几层：
 
 ```mermaid
-graph TD
-    User[用户/UI] --> App[应用层 (FastAPI/CLI)]
-    App --> Decision[AI 决策层]
-    App --> Trading[交易执行层]
+flowchart TD
+    User["用户/UI"] --> App["应用层 (FastAPI/CLI)"]
+    App --> Decision["AI 决策层"]
+    App --> Trading["交易执行层"]
     
-    subgraph "AI 决策层"
-        AI_Engine[AI Selection Engine]
-        Prompt_Eng[Prompt Engineering]
-        LLM_Client[LLM Client (OpenAI)]
+    subgraph ai_layer["AI 决策层"]
+        AI_Engine["AI Selection Engine"]
+        Prompt_Eng["Prompt Engineering"]
+        LLM_Client["LLM Client (OpenAI)"]
         AI_Engine --> Prompt_Eng
         Prompt_Eng --> LLM_Client
     end
     
-    subgraph "数据适配层"
-        MDM[Market Data Manager]
-        CR[Contract Resolver]
-        DB[Database Manager]
+    subgraph data_layer["数据适配层"]
+        MDM["Market Data Manager"]
+        CR["Contract Resolver"]
+        DB["Database Manager"]
         MDM --> CR
         MDM --> DB
     end
     
-    subgraph "交易执行层"
-        Strategy[CherryQuant Strategy]
-        Gateway[VNPy Gateway]
+    subgraph trading_layer["交易执行层"]
+        Strategy["CherryQuant Strategy"]
+        Gateway["VNPy Gateway"]
         Strategy --> Gateway
     end
     
     Decision --> MDM
     Trading --> MDM
-    Gateway --> CTP[CTP 接口]
-    MDM --> Tushare[Tushare API]
+    Gateway --> CTP["CTP 接口"]
+    MDM --> Tushare["Tushare API"]
 ```
 
 ### 核心组件说明
@@ -81,17 +81,23 @@ graph TD
 ## 1.4 目录结构
 ```
 CherryQuant/
+├── config/             # 全局配置 (Pydantic Settings)
 ├── docs/               # 文档和课程讲义
 ├── src/
-│   ├── cherryquant/    # 核心业务逻辑
-│   │   ├── adapters/   # 数据适配器
-│   │   ├── ai/         # AI 引擎
-│   │   └── config/     # 配置管理
-│   ├── trading/        # 交易执行层 (vn.py 集成)
-│   └── utils/          # 通用工具
-├── tests/              # 单元测试
-├── .env                # 环境变量 (API Key, 账号等)
-└── requirements.txt    # 项目依赖
+│   ├── cherryquant/    # 核心业务逻辑 (Hexagonal Core)
+│   │   ├── adapters/   # 接口适配器 (Data, DB, VNPy)
+│   │   ├── ai/         # AI 决策引擎
+│   │   ├── bootstrap/  # 启动与依赖注入 (Composition Root)
+│   │   ├── services/   # 应用服务
+│   │   └── utils/      # 核心工具
+│   ├── trading/        # 交易执行层 (VNPy Gateway封装)
+│   ├── risk/           # 风险管理模块
+│   └── alerts/         # 报警模块
+├── tests/              # 测试套件
+├── examples/           # 示例代码
+├── scripts/            # 工具脚本
+├── .env                # 环境变量
+└── pyproject.toml      # 项目依赖与工具配置
 ```
 
 ## 1.5 思考题

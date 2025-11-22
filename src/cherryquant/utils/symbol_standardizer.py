@@ -6,7 +6,6 @@
 """
 
 import re
-from typing import Tuple, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -42,7 +41,7 @@ class SymbolStandardizer:
     UPPERCASE_EXCHANGES = {"CZCE", "CFFEX"}
 
     @classmethod
-    def tushare_to_vnpy(cls, ts_symbol: str) -> Tuple[str, str]:
+    def tushare_to_vnpy(cls, ts_symbol: str) -> tuple[str, str]:
         """
         将Tushare格式的合约代码转换为VNPy格式
 
@@ -152,7 +151,7 @@ class SymbolStandardizer:
         return f"{ts_symbol}.{ts_exchange}"
 
     @classmethod
-    def standardize_for_database(cls, ts_symbol: str) -> Tuple[str, str]:
+    def standardize_for_database(cls, ts_symbol: str) -> tuple[str, str]:
         """
         标准化合约代码用于数据库存储（使用VNPy格式）
 
@@ -179,7 +178,7 @@ class SymbolStandardizer:
         return f"{symbol}.{exchange}"
 
     @classmethod
-    def parse_vt_symbol(cls, vt_symbol: str) -> Tuple[str, str]:
+    def parse_vt_symbol(cls, vt_symbol: str) -> tuple[str, str]:
         """
         解析VNPy的vt_symbol
 
@@ -199,7 +198,7 @@ class SymbolStandardizer:
         return parts[0], parts[1]
 
 
-def standardize_tushare_contract(ts_code: str) -> Tuple[str, str]:
+def standardize_tushare_contract(ts_code: str) -> tuple[str, str]:
     """
     便捷函数：标准化Tushare合约代码为VNPy格式
 

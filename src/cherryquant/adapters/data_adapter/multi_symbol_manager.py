@@ -6,7 +6,7 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -96,12 +96,12 @@ class MultiSymbolDataManager:
     对配置和环境变量的无感知，更符合清晰的分层设计。
     """
 
-    def __init__(self, db_manager: Optional[DatabaseManager] = None):
+    def __init__(self, db_manager: DatabaseManager | None = None):
         self.futures_market = ChineseFuturesMarket()
-        self.cache: Dict[str, Any] = {}
-        self.last_update: Dict[str, datetime] = {}
+        self.cache: dict[str, Any] = {}
+        self.last_update: dict[str, datetime] = {}
         self.cache_duration = 300  # 5分钟缓存
-        self.db_manager: Optional[DatabaseManager] = db_manager
+        self.db_manager: DatabaseManager | None = db_manager
 
     async def _ensure_db(self) -> DatabaseManager:
         if self.db_manager is None:
@@ -110,7 +110,7 @@ class MultiSymbolDataManager:
             )
         return self.db_manager
 
-    async def get_all_market_data(self, exclude_exchanges: List[str] = None) -> Dict[str, Any]:
+    async def get_all_market_data(self, exclude_exchanges: list[str] = None) -> dict[str, Any]:
         """获取所有期货品种的市场数据（从 DB 读取 5m 快照，若无则跳过）"""
         try:
             logger.info("开始获取全市场数据（DB 快照）...")
@@ -141,10 +141,10 @@ class MultiSymbolDataManager:
             logger.error(f"获取全市场数据失败: {e}")
             return {"error": str(e)}
 
-    async def _get_exchange_data(self, exchange: str, symbols: Dict[str, str]) -> Dict[str, Any]:
+    async def _get_exchange_data(self, exchange: str, symbols: dict[str, str]) -> dict[str, Any]:
         """获取单个交易所的数据（DB 快照）"""
         try:
-            exchange_data: Dict[str, Any] = {}
+            exchange_data: dict[str, Any] = {}
 
             # 并发获取所有品种数据
             tasks = []
@@ -167,7 +167,7 @@ class MultiSymbolDataManager:
             logger.error(f"获取{exchange}交易所数据失败: {e}")
             return {}
 
-    async def _get_symbol_data(self, exchange: str, symbol: str, name: str) -> Optional[Dict[str, Any]]:
+    async def _get_symbol_data(self, exchange: str, symbol: str, name: str) -> dict[str, Any | None]:
         """获取单个品种数据（优先 DB 5m 快照）"""
         try:
             # 缓存命中
@@ -304,7 +304,7 @@ class MultiSymbolDataManager:
         except:
             return 0.0
 
-    def get_top_movers(self, limit: int = 10) -> Dict[str, List[Dict]]:
+    def get_top_movers(self, limit: int = 10) -> dict[str, list[dict]]:
         """获取涨幅榜"""
         try:
             all_data = self.cache.values()
@@ -323,7 +323,7 @@ class MultiSymbolDataManager:
             logger.error(f"获取涨幅榜失败: {e}")
             return {"top_gainers": [], "top_losers": []}
 
-    def get_liquid_contracts(self, min_volume: int = 20000) -> List[Dict]:
+    def get_liquid_contracts(self, min_volume: int = 20000) -> list[dict]:
         """获取高流动性合约"""
         try:
             liquid = [d for d in self.cache.values() if d["volume"] >= min_volume]
@@ -332,7 +332,7 @@ class MultiSymbolDataManager:
             logger.error(f"获取高流动性合约失败: {e}")
             return []
 
-    def format_for_ai_prompt(self, market_data: Dict[str, Any]) -> str:
+    def format_for_ai_prompt(self, market_data: dict[str, Any]) -> str:
         """格式化数据用于AI提示词"""
         try:
             if "error" in market_data:

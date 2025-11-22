@@ -4,7 +4,7 @@
 """
 
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Any
 from datetime import datetime, timedelta
 import asyncio
 from abc import ABC, abstractmethod
@@ -18,12 +18,12 @@ class BaseContractResolver(ABC):
     """合约解析器基类"""
 
     @abstractmethod
-    async def resolve_vt_symbol(self, symbol: str) -> Optional[str]:
+    async def resolve_vt_symbol(self, symbol: str) -> str | None:
         """解析为vnpy格式的vt_symbol"""
         pass
 
     @abstractmethod
-    def get_instrument_info(self, symbol: str) -> Dict[str, Any]:
+    def get_instrument_info(self, symbol: str) -> dict[str, Any]:
         """获取合约基础信息"""
         pass
 
@@ -31,7 +31,7 @@ class BaseContractResolver(ABC):
 class FuturesContractResolver(BaseContractResolver):
     """期货合约解析器 - 动态查询主力合约"""
 
-    def __init__(self, tushare_token: Optional[str] = None):
+    def __init__(self, tushare_token: str | None = None):
         """
         初始化期货合约解析器
 
@@ -40,8 +40,8 @@ class FuturesContractResolver(BaseContractResolver):
         """
         self.tushare_token = tushare_token
         self.tushare_pro = None
-        self._cache: Dict[str, Dict] = {}
-        self._cache_time: Optional[datetime] = None
+        self._cache: dict[str, dict] = {}
+        self._cache_time: datetime | None = None
         self._cache_ttl = timedelta(hours=1)  # 缓存1小时
 
         if tushare_token:
@@ -56,8 +56,8 @@ class FuturesContractResolver(BaseContractResolver):
     async def get_dominant_contract(
         self,
         commodity: str,
-        trade_date: Optional[str] = None
-    ) -> Optional[str]:
+        trade_date: str | None = None
+    ) -> str | None:
         """
         获取指定品种的主力合约
 
@@ -94,8 +94,8 @@ class FuturesContractResolver(BaseContractResolver):
     async def _get_from_tushare(
         self,
         commodity: str,
-        trade_date: Optional[str] = None
-    ) -> Optional[str]:
+        trade_date: str | None = None
+    ) -> str | None:
         """从Tushare获取主力合约"""
         try:
             if not self.tushare_pro:
@@ -190,7 +190,7 @@ class FuturesContractResolver(BaseContractResolver):
             return False
         return datetime.now() - self._cache_time < self._cache_ttl
 
-    async def resolve_vt_symbol(self, commodity: str) -> Optional[str]:
+    async def resolve_vt_symbol(self, commodity: str) -> str | None:
         """
         解析品种代码为vnpy格式的vt_symbol
 
@@ -218,8 +218,8 @@ class FuturesContractResolver(BaseContractResolver):
 
     async def batch_resolve_contracts(
         self,
-        commodities: List[str]
-    ) -> Dict[str, Optional[str]]:
+        commodities: list[str]
+    ) -> dict[str, str | None]:
         """
         批量解析主力合约
 
@@ -246,7 +246,7 @@ class FuturesContractResolver(BaseContractResolver):
 
         return results
 
-    def get_instrument_info(self, commodity: str) -> Dict[str, str]:
+    def get_instrument_info(self, commodity: str) -> dict[str, str]:
         """
         获取品种信息
 
@@ -274,9 +274,9 @@ class FuturesContractResolver(BaseContractResolver):
 ContractResolver = FuturesContractResolver
 
 # 全局单例
-_resolver_instance: Optional[ContractResolver] = None
+_resolver_instance: ContractResolver | None = None
 
-def get_contract_resolver(tushare_token: Optional[str] = None) -> ContractResolver:
+def get_contract_resolver(tushare_token: str | None = None) -> ContractResolver:
     """获取全局合约解析器实例"""
     global _resolver_instance
     if _resolver_instance is None:

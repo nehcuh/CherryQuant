@@ -14,7 +14,6 @@ this project cleaner as a Python architecture example.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import redis.asyncio as aioredis
 
@@ -48,7 +47,7 @@ class AppContext:
             pass
 
 
-async def create_app_context(config: Optional[CherryQuantConfig] = None) -> AppContext:
+async def create_app_context(config: CherryQuantConfig | None = None) -> AppContext:
     """Create the application context from the given config (or env).
 
     This function is the main entry point for wiring dependencies in

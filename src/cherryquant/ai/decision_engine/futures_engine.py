@@ -5,8 +5,10 @@
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 import pandas as pd
 import numpy as np
 
@@ -14,6 +16,7 @@ from ..prompts.futures_prompts import FUTURES_SYSTEM_PROMPT, FUTURES_USER_PROMPT
 from ..llm_client.openai_client import LLMClient
 from cherryquant.adapters.data_adapter.market_data_manager import MarketDataManager
 from cherryquant.adapters.data_storage.database_manager import DatabaseManager
+from cherryquant.utils.indicators import calculate_rsi, calculate_macd, calculate_ma
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +26,8 @@ class FuturesDecisionEngine:
     def __init__(
         self,
         ai_client: LLMClient,
-        db_manager: Optional[DatabaseManager] = None,
-        market_data_manager: Optional[MarketDataManager] = None,
+        db_manager: DatabaseManager | None = None,
+        market_data_manager: MarketDataManager | None = None,
     ):
         """初始化决策引擎
 
@@ -41,10 +44,10 @@ class FuturesDecisionEngine:
     async def get_decision(
         self,
         symbol: str,
-        account_info: Dict[str, Any],
-        current_positions: List[Dict[str, Any]] = None,
+        account_info: dict[str, Any],
+        current_positions: list[dict[str, Any | None]] = None,
         exchange: str = "SHFE"
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any | None]:
         """
         获取交易决策
 
@@ -52,6 +55,7 @@ class FuturesDecisionEngine:
             symbol: 期货合约代码（如 'rb2501'）
             account_info: 账户信息
             current_positions: 当前持仓列表
+            exchange: 交易所代码
 
         Returns:
             交易决策字典，或None（如果失败）
@@ -95,7 +99,7 @@ class FuturesDecisionEngine:
             logger.error(f"获取决策时发生错误: {e}")
             return None
 
-    async def _get_market_data(self, symbol: str, exchange: str = "SHFE") -> Optional[Dict[str, Any]]:
+    async def _get_market_data(self, symbol: str, exchange: str = "SHFE") -> dict[str, Any | None]:
         """
         获取期货市场数据（从 DB 读取 5m/10m/30m/60m；DB 缺失时生成模拟序列）
         """
@@ -108,8 +112,7 @@ class FuturesDecisionEngine:
                 try:
                     pts5 = await self.db_manager.get_market_data(sym, exchange, TF.FIVE_MIN, limit=120)
                     if pts5:
-                        import pandas as _pd
-                        df5 = _pd.DataFrame([
+                        df5 = pd.DataFrame([
                             {
                                 'datetime': p.timestamp,
                                 'open': p.open,
@@ -123,14 +126,12 @@ class FuturesDecisionEngine:
                 except Exception as e:
                     logger.debug(f"DB 读取 5m 失败: {e}")
 
-            import pandas as _pd
             if df5 is None or df5.empty:
                 # 尝试从market_data_manager获取实时价格
                 base = 3500.0  # 默认基准价格
                 if self.market_data_manager:
                     try:
                         # 提取品种代码（去除数字）用于获取主力合约实时价格
-                        import re
                         commodity = re.sub(r'\d+', '', symbol).lower()
 
                         realtime_price = await self.market_data_manager.get_realtime_price(commodity)
@@ -145,7 +146,7 @@ class FuturesDecisionEngine:
                     logger.warning(f"market_data_manager未初始化，使用模拟基准价格: {base}")
 
                 # 生成模拟序列，以实时价格为基准
-                ts = _pd.date_range(end=_pd.Timestamp.now(), periods=120, freq='5min')
+                ts = pd.date_range(end=pd.Timestamp.now(), periods=120, freq='5min')
                 vals = []
                 price = base
                 for t in ts:
@@ -159,60 +160,46 @@ class FuturesDecisionEngine:
                         'close': price,
                         'volume': 10000,
                     })
-                df5 = _pd.DataFrame(vals)
+                df5 = pd.DataFrame(vals)
 
             # 指标计算（5m）
-            df5['ma5'] = df5['close'].rolling(window=5).mean()
-            df5['ma20'] = df5['close'].rolling(window=20).mean()
-            df5['rsi'] = self._calculate_rsi(df5['close'], 14)
-            df5['macd'], df5['macd_signal'], df5['macd_hist'] = self._calculate_macd(df5['close'])
+            df5['ma5'] = calculate_ma(df5['close'], window=5)
+            df5['ma20'] = calculate_ma(df5['close'], window=20)
+            df5['rsi'] = calculate_rsi(df5['close'], period=14)
+            df5['macd'], df5['macd_signal'], df5['macd_hist'] = calculate_macd(df5['close'])
+            
             latest = df5.iloc[-1]
             recent5 = df5.tail(20)
 
             # 读取其他时间框架（10m/30m/1H）并做简要摘要
             mtf = {}
             if self.db_manager:
-                try:
-                    pts10 = await self.db_manager.get_market_data(sym, exchange, TF.TEN_MIN, limit=100)
-                    if pts10:
-                        d10 = _pd.DataFrame([{ 'dt': p.timestamp, 'close': p.close } for p in pts10]).sort_values('dt')
-                        mtf['10m'] = {
-                            'rsi': float(self._calculate_rsi(d10['close'], 14).iloc[-1]) if len(d10) >= 15 else None,
-                        }
-                except Exception:
-                    pass
-                try:
-                    pts30 = await self.db_manager.get_market_data(sym, exchange, TF.THIRTY_MIN, limit=100)
-                    if pts30:
-                        d30 = _pd.DataFrame([{ 'dt': p.timestamp, 'close': p.close } for p in pts30]).sort_values('dt')
-                        mtf['30m'] = {
-                            'rsi': float(self._calculate_rsi(d30['close'], 14).iloc[-1]) if len(d30) >= 15 else None,
-                        }
-                except Exception:
-                    pass
-                try:
-                    pts1h = await self.db_manager.get_market_data(sym, exchange, TF.HOURLY, limit=100)
-                    if pts1h:
-                        d1h = _pd.DataFrame([{ 'dt': p.timestamp, 'close': p.close } for p in pts1h]).sort_values('dt')
-                        mtf['1h'] = {
-                            'rsi': float(self._calculate_rsi(d1h['close'], 14).iloc[-1]) if len(d1h) >= 15 else None,
-                        }
-                except Exception:
-                    pass
+                from cherryquant.adapters.data_storage.timeframe_data_manager import TimeFrame as TF
+                for tf_key, tf_enum in [('10m', TF.TEN_MIN), ('30m', TF.THIRTY_MIN), ('1h', TF.HOURLY)]:
+                    try:
+                        pts = await self.db_manager.get_market_data(sym, exchange, tf_enum, limit=100)
+                        if pts:
+                            d = pd.DataFrame([{ 'dt': p.timestamp, 'close': p.close } for p in pts]).sort_values('dt')
+                            if len(d) >= 15:
+                                mtf[tf_key] = {
+                                    'rsi': float(calculate_rsi(d['close'], 14).iloc[-1]),
+                                }
+                    except Exception:
+                        pass
 
             return {
                 'current_price': float(latest['close']),
-                'current_ma5': float(latest['ma5']) if not _pd.isna(latest['ma5']) else 0,
-                'current_ma20': float(latest['ma20']) if not _pd.isna(latest['ma20']) else 0,
-                'current_macd': float(latest['macd']) if not _pd.isna(latest['macd']) else 0,
-                'current_rsi': float(latest['rsi']) if not _pd.isna(latest['rsi']) else 50,
-                'current_volume': int(latest['volume']) if not _pd.isna(latest['volume']) else 0,
+                'current_ma5': float(latest['ma5']) if not pd.isna(latest['ma5']) else 0,
+                'current_ma20': float(latest['ma20']) if not pd.isna(latest['ma20']) else 0,
+                'current_macd': float(latest['macd']) if not pd.isna(latest['macd']) else 0,
+                'current_rsi': float(latest['rsi']) if not pd.isna(latest['rsi']) else 50,
+                'current_volume': int(latest['volume']) if not pd.isna(latest['volume']) else 0,
                 'prices_list': [float(x) for x in recent5['close'].tolist()],
-                'ma5_list': [float(x) if not _pd.isna(x) else 0 for x in recent5['ma5'].tolist()],
-                'ma20_list': [float(x) if not _pd.isna(x) else 0 for x in recent5['ma20'].tolist()],
-                'macd_list': [float(x) if not _pd.isna(x) else 0 for x in recent5['macd'].tolist()],
-                'rsi_list': [float(x) if not _pd.isna(x) else 50 for x in recent5['rsi'].tolist()],
-                'volumes_list': [int(x) if not _pd.isna(x) else 0 for x in recent5['volume'].tolist()],
+                'ma5_list': [float(x) if not pd.isna(x) else 0 for x in recent5['ma5'].tolist()],
+                'ma20_list': [float(x) if not pd.isna(x) else 0 for x in recent5['ma20'].tolist()],
+                'macd_list': [float(x) if not pd.isna(x) else 0 for x in recent5['macd'].tolist()],
+                'rsi_list': [float(x) if not pd.isna(x) else 50 for x in recent5['rsi'].tolist()],
+                'volumes_list': [int(x) if not pd.isna(x) else 0 for x in recent5['volume'].tolist()],
                 'timestamp': datetime.now().isoformat(),
                 'mtf': mtf,
             }
@@ -220,35 +207,12 @@ class FuturesDecisionEngine:
             logger.error(f"获取市场数据时发生错误: {e}")
             return None
 
-    # ============================================================================
-    # _convert_symbol_for_akshare 已废弃
-    # 原因：AKShare 已移除，使用 QuantBox 替代
-    # ============================================================================
-
-    def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
-        """计算RSI指标"""
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        return rsi
-
-    def _calculate_macd(self, prices: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
-        """计算MACD指标"""
-        exp1 = prices.ewm(span=fast).mean()
-        exp2 = prices.ewm(span=slow).mean()
-        macd = exp1 - exp2
-        signal_line = macd.ewm(span=signal).mean()
-        histogram = macd - signal_line
-        return macd, signal_line, histogram
-
     def _build_user_prompt(
         self,
         symbol: str,
-        market_data: Dict[str, Any],
-        account_info: Dict[str, Any],
-        current_positions: List[Dict[str, Any]]
+        market_data: dict[str, Any],
+        account_info: dict[str, Any],
+        current_positions: list[dict[str, Any]]
     ) -> str:
         """
         构造用户提示词
@@ -333,9 +297,8 @@ class FuturesDecisionEngine:
         except Exception:
             pass
 
-    def _simulate_decision(self, symbol: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _simulate_decision(self, symbol: str, market_data: dict[str, Any]) -> dict[str, Any]:
         """在无可用 LLM 时的简单规则模拟决策（基于 5m）"""
-        import math
         prices = market_data.get('prices_list', [])
         ma5_last = market_data.get('current_ma5', 0)
         ma20_last = market_data.get('current_ma20', 0)

@@ -3,47 +3,25 @@ CherryQuant 基础配置设置
 使用Pydantic进行配置验证和环境变量管理
 """
 
+from typing import ClassVar
 from pydantic import Field, ValidationInfo, field_validator, model_validator
-from pydantic_settings import BaseSettings
-from typing import Optional, List
-import os
+from pydantic_settings import BaseSettings, SettingsConfigDict
 import logging
-from dotenv import load_dotenv
-
-
-# 在导入配置类之前优先加载项目根目录下的 .env，
-# 这样 pydantic-settings 可以从环境变量中读取到用户配置。
-_ = load_dotenv()
-
-
-# 兼容旧的环境变量命名：
-# - DATA_MODE -> MODE（供 DataSourceConfig.mode 使用）
-# - DATA_SOURCE -> SOURCE（供 DataSourceConfig.source 使用），并移除 DATA_SOURCE，
-#   避免被 CherryQuantConfig.data_source 视为整体 JSON 配置。
-if os.getenv("DATA_MODE") and not os.getenv("MODE"):
-    os.environ["MODE"] = os.environ["DATA_MODE"]
-
-if os.getenv("DATA_SOURCE"):
-    if not os.getenv("SOURCE"):
-        os.environ["SOURCE"] = os.environ["DATA_SOURCE"]
-    # 避免嵌套 BaseSettings 将 DATA_SOURCE 当成复杂对象来解析
-    _ = os.environ.pop("DATA_SOURCE", None)
-
-# 兼容 AI 环境变量命名：将 OPENAI_* 映射到通用字段，
-# 以便 AIConfig(model/base_url/api_key) 能在 pydantic-settings v2 下正常读取。
-if os.getenv("OPENAI_MODEL") and not os.getenv("MODEL"):
-    os.environ["MODEL"] = os.environ["OPENAI_MODEL"]
-
-if os.getenv("OPENAI_BASE_URL") and not os.getenv("BASE_URL"):
-    os.environ["BASE_URL"] = os.environ["OPENAI_BASE_URL"]
-
-if os.getenv("OPENAI_API_KEY") and not os.getenv("API_KEY"):
-    os.environ["API_KEY"] = os.environ["OPENAI_API_KEY"]
 
 logger = logging.getLogger(__name__)
 
 
-class DatabaseConfig(BaseSettings):
+class AppBaseSettings(BaseSettings):
+    """App-wide base settings with unified .env behavior"""
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=True,
+    )
+
+
+class DatabaseConfig(AppBaseSettings):
     """数据库配置"""
 
     # MongoDB 配置
@@ -74,18 +52,13 @@ class DatabaseConfig(BaseSettings):
             )
         return v
 
-    class Config:
-        env_file: str = ".env"
-        env_file_encoding: str = "utf-8"
-        case_sensitive: bool = True
-        extra: str = "ignore"
 
 
-class AIConfig(BaseSettings):
+
+class AIConfig(AppBaseSettings):
     """AI配置
 
-    注意：此配置通过 env_file/.env 与环境变量映射，用于驱动
-    AsyncOpenAIClient，而不再在适配层中直接读取 os.environ。
+    注意：此配置通过 .env 与环境变量映射，用于驱动 AsyncOpenAIClient。
     """
 
     model: str = Field(
@@ -107,12 +80,7 @@ class AIConfig(BaseSettings):
         default=30, description="API超时时间（秒）", alias="OPENAI_TIMEOUT"
     )
 
-    class Config:
-        """环境变量与 .env 加载配置（兼容现有 OPENAI_* / *_TIMEOUT 等变量）"""
 
-        env_file: str = ".env"
-        env_file_encoding: str = "utf-8"
-        extra: str = "ignore"
 
     @field_validator("api_key")
     def validate_api_key(cls, v: str, info: ValidationInfo):
@@ -138,7 +106,7 @@ class AIConfig(BaseSettings):
         return v
 
 
-class TradingConfig(BaseSettings):
+class TradingConfig(AppBaseSettings):
     """交易配置"""
 
     default_symbol: str = Field(default="rb2601", description="默认交易合约")
@@ -155,12 +123,11 @@ class TradingConfig(BaseSettings):
         return v
 
 
-class DataSourceConfig(BaseSettings):
+class DataSourceConfig(AppBaseSettings):
     """数据源配置
 
     说明：
-    - 推荐使用 .env 中的 DATA_MODE、DATA_SOURCE，
-      我们在模块导入时已将其映射为 MODE / SOURCE 供本配置使用。
+    - 建议在 .env 中设置 DATA_MODE 与 DATA_SOURCE。
     """
 
     mode: str = Field(
@@ -171,7 +138,7 @@ class DataSourceConfig(BaseSettings):
     source: str = Field(
         default="tushare", description="数据源类型", alias="DATA_SOURCE"
     )
-    tushare_token: Optional[str] = Field(default=None, description="Tushare令牌")
+    tushare_token: str|None = Field(default=None, description="Tushare令牌")
 
     # CTP配置
     ctp_userid: str | None = Field(default=None, description="CTP用户ID")
@@ -186,7 +153,7 @@ class DataSourceConfig(BaseSettings):
         description="CTP交易服务器",
     )
 
-    @field_validator("data_mode")
+    @field_validator("mode")
     def validate_mode(cls, v: str):
         """验证数据模式"""
         if v not in ("live", "dev"):
@@ -203,7 +170,7 @@ class DataSourceConfig(BaseSettings):
     @model_validator(mode="after")
     def validate_live_mode_requirements(self):
         """验证live模式的必需配置"""
-        data_mode = self.data_mode
+        data_mode = self.mode
         if data_mode == "live":
             # 验证 CTP 配置
             if not self.ctp_userid:
@@ -218,7 +185,7 @@ class DataSourceConfig(BaseSettings):
         return self
 
 
-class RiskConfig(BaseSettings):
+class RiskConfig(AppBaseSettings):
     """组合风险管理配置"""
 
     max_total_capital_usage: float = Field(default=0.8, description="最大总资金使用率")
@@ -260,7 +227,7 @@ class RiskConfig(BaseSettings):
         return v
 
 
-class LoggingConfig(BaseSettings):
+class LoggingConfig(AppBaseSettings):
     """日志配置"""
 
     level: str = Field(default="INFO", description="日志级别")
@@ -281,7 +248,7 @@ class LoggingConfig(BaseSettings):
     )
 
 
-class AlertsConfig(BaseSettings):
+class AlertsConfig(AppBaseSettings):
     """警报/通知配置
 
     通过环境变量或 .env 文件统一管理邮件、微信、钉钉和通用 Webhook 通知。
@@ -345,17 +312,16 @@ class AlertsConfig(BaseSettings):
 
     @field_validator("email_recipients", mode="before")
     @classmethod
-    def split_recipients(cls, v: str):  # type: ignore[override]
+    def split_recipients(cls, v: str | list[str]):
         """支持逗号分隔字符串或列表两种形式"""
+        if isinstance(v, list):
+            return v
         return [item.strip() for item in v.split(",") if item.strip()]
 
-    class Config:
-        env_file: str = ".env"
-        env_file_encoding: str = "utf-8"
-        extra: str = "ignore"
 
 
-class CherryQuantConfig(BaseSettings):
+
+class CherryQuantConfig(AppBaseSettings):
     """CherryQuant主配置"""
 
     database: DatabaseConfig = DatabaseConfig()
@@ -370,6 +336,9 @@ class CherryQuantConfig(BaseSettings):
     environment: str = Field(default="development", description="运行环境")
     debug: bool = Field(default=False, description="调试模式")
     timezone: str = Field(default="Asia/Shanghai", description="时区")
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(env_prefix="CHERRYQUANT_")
+
+
 
     @classmethod
     def from_env(cls) -> "CherryQuantConfig":

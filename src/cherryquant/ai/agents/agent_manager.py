@@ -6,7 +6,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Set
+from typing import Any
 from dataclasses import dataclass, asdict
 import json
 import os
@@ -45,11 +45,11 @@ class AgentManager:
 
     def __init__(
         self,
-        db_manager: Optional[DatabaseManager] = None,
-        market_data_manager: Optional[Any] = None,
-        risk_config: Optional[PortfolioRiskConfig] = None,
-        ai_client: Optional[LLMClient] = None,
-        order_manager: Optional[Any] = None,
+        db_manager: DatabaseManager | None = None,
+        market_data_manager: Any | None = None,
+        risk_config: PortfolioRiskConfig | None = None,
+        ai_client: LLMClient | None = None,
+        order_manager: Any | None = None,
         enable_live_trading: bool = False,
     ):
         """初始化代理管理器
@@ -79,8 +79,8 @@ class AgentManager:
         self.sector_mapping = self._load_sector_mapping()
 
         # 代理管理
-        self.agents: Dict[str, StrategyAgent] = {}
-        self.active_agents: Set[str] = set()
+        self.agents: dict[str, StrategyAgent] = {}
+        self.active_agents: set[str] = set()
         self.total_initial_capital = 0.0
 
         # 状态管理
@@ -96,7 +96,7 @@ class AgentManager:
         self.daily_trades = 0
 
         # 实盘执行记录（从 KLineOrderManager 回调聚合）
-        self.live_executions: Dict[str, List[Dict[str, Any]]] = {}
+        self.live_executions: dict[str, list[dict[str, Any]]] = {}
         # 单个策略保留的最近实盘执行记录条数（滚动窗口，避免内存无限增长）
         self._max_live_executions_per_strategy: int = 500
 
@@ -425,7 +425,7 @@ class AgentManager:
         max_sector_positions = max(sector_positions.values()) if sector_positions else 0
         return max_sector_positions / total_positions
 
-    def _load_sector_mapping(self, config_file: str = "config/strategies.json") -> Dict[str, str]:
+    def _load_sector_mapping(self, config_file: str = "config/strategies.json") -> dict[str, str]:
         """从配置文件加载板块映射
 
         Args:
@@ -455,7 +455,7 @@ class AgentManager:
             logger.error(f"加载板块映射失败: {e}，使用默认板块映射")
             return self._get_default_sector_mapping()
 
-    def _get_default_sector_mapping(self) -> Dict[str, str]:
+    def _get_default_sector_mapping(self) -> dict[str, str]:
         """返回默认板块映射（作为备份）"""
         return {
             "rb": "黑色金属", "hc": "黑色金属", "i": "黑色金属", "j": "黑色金属", "jm": "黑色金属",
@@ -586,7 +586,7 @@ class AgentManager:
         except Exception as e:
             logger.error(f"记录组合状态失败: {e}")
 
-    def get_portfolio_status(self) -> Dict[str, Any]:
+    def get_portfolio_status(self) -> dict[str, Any]:
         """获取组合状态"""
         agent_statuses = {sid: agent.get_status() for sid, agent in self.agents.items()}
 
@@ -609,7 +609,7 @@ class AgentManager:
             "risk_config": asdict(self.risk_config)
         }
 
-    def get_strategy_details(self, strategy_id: str) -> Optional[Dict[str, Any]]:
+    def get_strategy_details(self, strategy_id: str) -> dict[str, Any | None]:
         """获取策略详细信息"""
         if strategy_id not in self.agents:
             return None

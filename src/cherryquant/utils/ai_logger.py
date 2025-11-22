@@ -8,7 +8,7 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
 from dataclasses import dataclass, asdict
 from enum import Enum
 import aiofiles
@@ -43,10 +43,10 @@ class AIDecisionLog:
     price: float
     confidence: float
     reasoning: str
-    market_data: Dict[str, Any]
-    technical_indicators: Dict[str, Any]
-    risk_factors: List[str]
-    execution_result: Optional[str] = None
+    market_data: dict[str, Any]
+    technical_indicators: dict[str, Any]
+    risk_factors: list[str]
+    execution_result: str | None = None
 
 @dataclass
 class TradeExecutionLog:
@@ -62,7 +62,7 @@ class TradeExecutionLog:
     commission: float
     execution_time: float
     status: str
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 @dataclass
 class PositionLog:
@@ -76,8 +76,8 @@ class PositionLog:
     current_price: float
     unrealized_pnl: float
     realized_pnl: float
-    stop_loss: Optional[float]
-    take_profit: Optional[float]
+    stop_loss: float | None
+    take_profit: float | None
 
 @dataclass
 class RiskEventLog:
@@ -100,7 +100,7 @@ class AITradingLogger:
         log_dir: str = "logs",
         enable_file_logging: bool = True,
         enable_database_logging: bool = True,
-        db_manager: Optional[Any] = None
+        db_manager: Any | None = None
     ):
         """初始化AI交易日志管理器
 
@@ -124,13 +124,13 @@ class AITradingLogger:
         (self.log_dir / "performance").mkdir(exist_ok=True)
 
         # 日志队列和缓冲
-        self.log_queue: List[Dict[str, Any]] = []
+        self.log_queue: list[dict[str, Any]] = []
         self.batch_size = 100
         self.flush_interval = 60  # 60秒
 
         # 启动后台任务
         self._running = False
-        self._flush_task: Optional[asyncio.Task] = None
+        self._flush_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """启动日志系统"""
@@ -250,7 +250,7 @@ class AITradingLogger:
         self,
         strategy_id: str,
         strategy_name: str,
-        performance_data: Dict[str, Any]
+        performance_data: dict[str, Any]
     ) -> None:
         """记录策略性能"""
         try:
@@ -282,12 +282,12 @@ class AITradingLogger:
 
     async def get_decision_logs(
         self,
-        strategy_id: Optional[str] = None,
-        symbol: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        strategy_id: str | None = None,
+        symbol: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """获取决策日志"""
         try:
             if self.enable_database_logging and self.db_manager:
@@ -307,12 +307,12 @@ class AITradingLogger:
 
     async def get_trade_logs(
         self,
-        strategy_id: Optional[str] = None,
-        symbol: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        strategy_id: str | None = None,
+        symbol: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """获取交易日志"""
         try:
             if self.enable_database_logging and self.db_manager:
@@ -326,7 +326,7 @@ class AITradingLogger:
             logging.error(f"获取交易日志失败: {e}")
             return []
 
-    async def get_daily_summary(self, date: Optional[datetime] = None) -> Dict[str, Any]:
+    async def get_daily_summary(self, date: datetime | None = None) -> dict[str, Any]:
         """获取每日总结"""
         if date is None:
             date = datetime.now()
@@ -370,7 +370,7 @@ class AITradingLogger:
             logging.error(f"获取每日总结失败: {e}")
             return {}
 
-    async def _write_to_file(self, category: str, filename: str, log_entry: Dict[str, Any]) -> None:
+    async def _write_to_file(self, category: str, filename: str, log_entry: dict[str, Any]) -> None:
         """写入文件日志"""
         try:
             file_path = self.log_dir / category / filename
@@ -454,11 +454,11 @@ class AITradingLogger:
     async def _query_file_logs(
         self,
         category: str,
-        strategy_id: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        strategy_id: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """从文件查询日志"""
         try:
             logs = []
@@ -505,25 +505,25 @@ class AITradingLogger:
     async def _query_database_logs(
         self,
         category: str,
-        strategy_id: Optional[str] = None,
-        symbol: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        strategy_id: str | None = None,
+        symbol: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """从数据库查询日志"""
         # 这里可以根据不同的category实现不同的数据库查询
         # 目前简化实现
         return []
 
 # 全局AI日志管理器实例
-ai_logger: Optional[AITradingLogger] = None
+ai_logger: AITradingLogger | None = None
 
 async def get_ai_logger(
     log_dir: str = "logs",
     enable_file_logging: bool = True,
     enable_database_logging: bool = True,
-    db_manager: Optional[Any] = None
+    db_manager: Any | None = None
 ) -> AITradingLogger:
     """获取AI日志管理器实例"""
     global ai_logger

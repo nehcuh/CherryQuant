@@ -7,7 +7,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 import pandas as pd
 
 from .cherryquant_adapter import CherryQuantQuantBoxAdapter
@@ -81,10 +81,10 @@ class DataBridge:
         symbol: str,
         exchange: str,
         interval: str,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: Optional[int] = None
-    ) -> List[MarketDataPoint]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int | None = None
+    ) -> list[MarketDataPoint]:
         """
         获取K线数据（统一接口）
 
@@ -197,9 +197,9 @@ class DataBridge:
         symbol: str,
         exchange: str,
         interval: str,
-        start_time: Optional[datetime],
-        end_time: Optional[datetime],
-        limit: Optional[int]
+        start_time: datetime | None,
+        end_time: datetime | None,
+        limit: int | None
     ) -> pd.DataFrame:
         """
         获取非日线数据（需要从日线数据重采样）
@@ -293,8 +293,8 @@ class DataBridge:
         self,
         symbol: str,
         exchange: str,
-        date: Optional[str] = None
-    ) -> Dict[str, Any]:
+        date: str | None = None
+    ) -> dict[str, Any]:
         """
         获取合约信息
 
@@ -382,7 +382,7 @@ class DataBridge:
 
     # ==================== 缓存管理 ====================
 
-    def clear_cache(self, pattern: Optional[str] = None):
+    def clear_cache(self, pattern: str | None = None):
         """
         清空缓存
 
@@ -400,7 +400,7 @@ class DataBridge:
             self._cache_timestamps.clear()
             logger.info("清空所有缓存")
 
-    def get_cache_status(self) -> Dict[str, Any]:
+    def get_cache_status(self) -> dict[str, Any]:
         """
         获取缓存状态
 
@@ -424,8 +424,8 @@ class DataBridge:
 
     async def batch_get_kline_data(
         self,
-        requests: List[Dict[str, Any]]
-    ) -> Dict[str, List[MarketDataPoint]]:
+        requests: list[dict[str, Any]]
+    ) -> dict[str, list[MarketDataPoint]]:
         """
         批量获取K线数据
 

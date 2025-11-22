@@ -6,7 +6,7 @@ AI策略代理 - 单个策略实例
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any
 from dataclasses import dataclass, asdict
 from enum import Enum
 
@@ -54,14 +54,14 @@ class StrategyConfig:
     manual_override: bool = False
 
     # 新增：品种池配置
-    commodity_pool: Optional[str] = None  # 品种池名称 (如 "black", "metal", "all")
+    commodity_pool: str | None = None  # 品种池名称 (如 "black", "metal", "all")
     max_symbols: int = 3  # AI可选择的最大品种数
     selection_mode: str = "ai_driven"  # ai_driven 或 manual
-    description: Optional[str] = None
+    description: str | None = None
 
     # 向后兼容：支持直接指定品种列表
-    symbols: Optional[List[str]] = None
-    commodities: Optional[List[str]] = None  # 品种代码列表
+    symbols: list[str | None] = None
+    commodities: list[str | None] = None  # 品种代码列表
 
 @dataclass
 class Position:
@@ -73,8 +73,8 @@ class Position:
     current_price: float
     unrealized_pnl: float
     leverage: float
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
     strategy_id: str = ""
 
 @dataclass
@@ -98,10 +98,10 @@ class StrategyAgent:
     def __init__(
         self,
         config: StrategyConfig,
-        db_manager: Optional[Any] = None,
-        market_data_manager: Optional[Any] = None,
-        ai_client: Optional[LLMClient] = None,
-        order_manager: Optional[Any] = None,
+        db_manager: Any | None = None,
+        market_data_manager: Any | None = None,
+        ai_client: LLMClient | None = None,
+        order_manager: Any | None = None,
         enable_live_trading: bool = False,
     ):
         """初始化策略代理
@@ -134,8 +134,8 @@ class StrategyAgent:
         # 账户管理
         self.account_value = config.initial_capital
         self.cash_available = config.initial_capital
-        self.positions: Dict[str, Position] = {}
-        self.trades: List[Trade] = []
+        self.positions: dict[str, Position] = {}
+        self.trades: list[Trade] = []
         # Structured logger (AITradingLogger), initialized on start()
         self.ai_logger = None
 
@@ -307,7 +307,7 @@ class StrategyAgent:
             decision.setdefault("display_symbol", symbol)
             await self._execute_decision(symbol, decision)
 
-    async def _execute_decision(self, symbol: str, decision: Dict[str, Any]) -> None:
+    async def _execute_decision(self, symbol: str, decision: dict[str, Any]) -> None:
         """执行AI决策"""
         try:
             # 将 FuturesDecisionEngine 的输出字段标准化为代理预期字段
@@ -380,7 +380,7 @@ class StrategyAgent:
         side: str,
         quantity: int,
         price: float,
-        decision: Dict[str, Any],
+        decision: dict[str, Any],
     ) -> None:
         """在启用实盘模式时，通过 KLineOrderManager 发送真实订单。
 
@@ -444,7 +444,7 @@ class StrategyAgent:
         except Exception as e:
             logger.error(f"实盘下单失败（已保留模拟账户状态）: {e}")
 
-    async def _execute_buy(self, symbol: str, quantity: int, price: float, decision: Dict[str, Any]) -> None:
+    async def _execute_buy(self, symbol: str, quantity: int, price: float, decision: dict[str, Any]) -> None:
         """执行买入操作"""
         # 计算需要的保证金
         margin_needed = quantity * price * self.config.leverage * 0.1  # 假设保证金比例10%
@@ -535,7 +535,7 @@ class StrategyAgent:
 
         logger.info(f"执行买入: {symbol} {quantity}手 @ {price:.2f}, 决策置信度: {decision.get('confidence', 0):.2f}")
 
-    async def _execute_sell(self, symbol: str, quantity: int, price: float, decision: Dict[str, Any]) -> None:
+    async def _execute_sell(self, symbol: str, quantity: int, price: float, decision: dict[str, Any]) -> None:
         """执行卖出操作"""
         current_position = self.positions.get(symbol)
         if current_position is None or current_position.quantity <= 0:
@@ -617,7 +617,7 @@ class StrategyAgent:
 
         logger.info(f"执行卖出: {symbol} {quantity}手 @ {price:.2f}, 实现盈亏: {pnl:.2f}")
 
-    async def _manage_position(self, symbol: str, decision: Dict[str, Any]) -> None:
+    async def _manage_position(self, symbol: str, decision: dict[str, Any]) -> None:
         """管理现有持仓"""
         current_position = self.positions.get(symbol)
         if current_position is None:
@@ -695,7 +695,7 @@ class StrategyAgent:
         except Exception as e:
             logger.error(f"记录交易到数据库失败: {e}")
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """获取代理状态"""
         return {
             "strategy_id": self.config.strategy_id,

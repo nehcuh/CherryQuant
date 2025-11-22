@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -45,18 +45,18 @@ app.add_middleware(
 )
 
 # 全局实例
-agent_manager: Optional[AgentManager] = None
-db_manager: Optional[DatabaseManager] = None
-ai_logger: Optional[AITradingLogger] = None
-websocket_connections: List[WebSocket] = []
+agent_manager: AgentManager | None = None
+db_manager: DatabaseManager | None = None
+ai_logger: AITradingLogger | None = None
+websocket_connections: list[WebSocket] = []
 
 # Pydantic模型
 class StrategyConfig(BaseModel):
     strategy_id: str
     strategy_name: str
-    symbols: Optional[List[str]] = None
-    commodity_pool: Optional[str] = None
-    commodities: Optional[List[str]] = None
+    symbols: list[str | None] = None
+    commodity_pool: str | None = None
+    commodities: list[str | None] = None
     max_symbols: int = 3
     selection_mode: str = "ai_driven"
     initial_capital: float
@@ -78,8 +78,8 @@ class OrderRequest(BaseModel):
     order_type: str
     volume: int
     price: float = 0.0
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
 
 class RiskConfig(BaseModel):
     max_total_capital_usage: float = 0.8
@@ -101,7 +101,7 @@ def initialize_services(
     ai_logger = al
 
 
-def _parse_timestamp(value: Any) -> Optional[datetime]:
+def _parse_timestamp(value: Any) -> datetime | None:
     """尽量从字符串/日期对象解析为 datetime，用于 PnL 计算。"""
     if isinstance(value, datetime):
         return value
@@ -113,7 +113,7 @@ def _parse_timestamp(value: Any) -> Optional[datetime]:
     return None
 
 
-def _compute_simulated_pnl(recent_trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _compute_simulated_pnl(recent_trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """根据 recent_trades 计算模拟账户的累计盈亏曲线。"""
     if not recent_trades:
         return []
@@ -135,14 +135,14 @@ def _compute_simulated_pnl(recent_trades: List[Dict[str, Any]]) -> List[Dict[str
 
     items.sort(key=lambda x: x[0])
     cum = 0.0
-    series: List[Dict[str, Any]] = []
+    series: list[dict[str, Any]] = []
     for ts, pnl_value in items:
         cum += pnl_value
         series.append({"timestamp": ts.isoformat(), "cum_pnl": cum})
     return series
 
 
-def _compute_live_pnl(strategy_id: str) -> List[Dict[str, Any]]:
+def _compute_live_pnl(strategy_id: str) -> list[dict[str, Any]]:
     """根据 live_executions 近似计算实盘执行的累计已实现盈亏曲线。"""
     if not agent_manager or not hasattr(agent_manager, "live_executions"):
         return []
@@ -181,8 +181,8 @@ def _compute_live_pnl(strategy_id: str) -> List[Dict[str, Any]]:
     events.sort(key=lambda x: x["timestamp"])
 
     # 按 symbol 维护头寸与均价
-    state: Dict[str, Dict[str, Any]] = {}
-    series: List[Dict[str, Any]] = []
+    state: dict[str, dict[str, Any]] = {}
+    series: list[dict[str, Any]] = []
 
     for ev in events:
         symbol = ev["symbol"]
@@ -571,8 +571,8 @@ async def delete_strategy(strategy_id: str):
 
 @app.get("/api/v1/trades")
 async def get_trades(
-    strategy_id: Optional[str] = None,
-    symbol: Optional[str] = None,
+    strategy_id: str | None = None,
+    symbol: str | None = None,
     limit: int = 100
 ):
     """获取交易记录"""
@@ -587,7 +587,7 @@ async def get_trades(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/positions")
-async def get_positions(strategy_id: Optional[str] = None):
+async def get_positions(strategy_id: str | None = None):
     """获取当前持仓"""
     try:
         if not agent_manager:
@@ -695,7 +695,7 @@ async def get_strategy_performance(strategy_id: str, days: int = 7):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/performance/daily-summary")
-async def get_daily_summary(date: Optional[str] = None):
+async def get_daily_summary(date: str | None = None):
     """获取每日总结"""
     try:
         if not ai_logger:
@@ -715,10 +715,10 @@ async def get_daily_summary(date: Optional[str] = None):
 
 @app.get("/api/v1/logs/decisions")
 async def get_decision_logs(
-    strategy_id: Optional[str] = None,
-    symbol: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    strategy_id: str | None = None,
+    symbol: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     limit: int = 100
 ):
     """获取AI决策日志"""

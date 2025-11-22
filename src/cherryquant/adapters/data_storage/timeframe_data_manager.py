@@ -6,7 +6,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 from enum import Enum
 import pandas as pd
 import numpy as np
@@ -45,35 +45,35 @@ class TechnicalIndicators:
     timestamp: datetime
 
     # 移动平均线
-    ma5: Optional[float] = None
-    ma10: Optional[float] = None
-    ma20: Optional[float] = None
-    ma60: Optional[float] = None
-    ema12: Optional[float] = None
-    ema26: Optional[float] = None
+    ma5: float | None = None
+    ma10: float | None = None
+    ma20: float | None = None
+    ma60: float | None = None
+    ema12: float | None = None
+    ema26: float | None = None
 
     # MACD指标
-    macd: Optional[float] = None
-    macd_signal: Optional[float] = None
-    macd_histogram: Optional[float] = None
+    macd: float | None = None
+    macd_signal: float | None = None
+    macd_histogram: float | None = None
 
     # KDJ指标
-    kdj_k: Optional[float] = None
-    kdj_d: Optional[float] = None
-    kdj_j: Optional[float] = None
+    kdj_k: float | None = None
+    kdj_d: float | None = None
+    kdj_j: float | None = None
 
     # RSI指标
-    rsi: Optional[float] = None
+    rsi: float | None = None
 
     # 布林带
-    bb_upper: Optional[float] = None
-    bb_middle: Optional[float] = None
-    bb_lower: Optional[float] = None
+    bb_upper: float | None = None
+    bb_middle: float | None = None
+    bb_lower: float | None = None
 
     # 其他指标
-    atr: Optional[float] = None
-    cci: Optional[float] = None
-    williams_r: Optional[float] = None
+    atr: float | None = None
+    cci: float | None = None
+    williams_r: float | None = None
 
 class TimeFrameDataManager:
     """多时间维度数据管理器"""
@@ -86,8 +86,8 @@ class TimeFrameDataManager:
             cache_duration_hours: 数据缓存时间（小时）
         """
         self.cache_duration = timedelta(hours=cache_duration_hours)
-        self.data_cache: Dict[str, Dict[TimeFrame, Tuple[pd.DataFrame, datetime]]] = {}
-        self.indicators_cache: Dict[str, Dict[TimeFrame, Tuple[List[TechnicalIndicators], datetime]]] = {}
+        self.data_cache: dict[str, dict[TimeFrame, tuple[pd.DataFrame, datetime]]] = {}
+        self.indicators_cache: dict[str, dict[TimeFrame, tuple[list[TechnicalIndicators], datetime]]] = {}
 
         # 时间周期的数据保留策略
         self.retention_policy = {
@@ -107,9 +107,9 @@ class TimeFrameDataManager:
         self,
         symbol: str,
         exchange: str,
-        timeframes: List[TimeFrame] = None,
+        timeframes: list[TimeFrame] = None,
         limit: int = None
-    ) -> Dict[TimeFrame, pd.DataFrame]:
+    ) -> dict[TimeFrame, pd.DataFrame]:
         """
         获取多时间维度数据
 
@@ -159,8 +159,8 @@ class TimeFrameDataManager:
         self,
         symbol: str,
         exchange: str,
-        timeframes: List[TimeFrame] = None
-    ) -> Dict[TimeFrame, List[TechnicalIndicators]]:
+        timeframes: list[TimeFrame] = None
+    ) -> dict[TimeFrame, list[TechnicalIndicators]]:
         """
         获取多时间维度技术指标
 
@@ -209,7 +209,7 @@ class TimeFrameDataManager:
         symbol: str,
         exchange: str,
         max_context_points: int = 1000
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         获取AI优化的数据格式
 
@@ -257,7 +257,7 @@ class TimeFrameDataManager:
         symbol: str,
         exchange: str,
         timeframe: TimeFrame
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """获取指定时间周期数据"""
         try:
             # 这里应该调用真实的数据源
@@ -272,7 +272,7 @@ class TimeFrameDataManager:
         self,
         df: pd.DataFrame,
         timeframe: TimeFrame
-    ) -> List[TechnicalIndicators]:
+    ) -> list[TechnicalIndicators]:
         """计算所有技术指标"""
         indicators = []
 
@@ -354,7 +354,7 @@ class TimeFrameDataManager:
         rsi = 100 - (100 / (1 + rs))
         return rsi
 
-    def _calculate_kdj(self, high: pd.Series, low: pd.Series, close: pd.Series, period: int = 9) -> Dict[str, pd.Series]:
+    def _calculate_kdj(self, high: pd.Series, low: pd.Series, close: pd.Series, period: int = 9) -> dict[str, pd.Series]:
         """计算KDJ指标"""
         lowest_low = low.rolling(window=period).min()
         highest_high = high.rolling(window=period).max()
@@ -397,7 +397,7 @@ class TimeFrameDataManager:
         _, last_update = self.indicators_cache[cache_key][timeframe]
         return datetime.now() - last_update < self.cache_duration
 
-    def _apply_limit(self, df: pd.DataFrame, limit: Optional[int]) -> pd.DataFrame:
+    def _apply_limit(self, df: pd.DataFrame, limit: int | None) -> pd.DataFrame:
         """应用数据条数限制"""
         if limit is not None and len(df) > limit:
             return df.tail(limit)
@@ -476,9 +476,9 @@ class TimeFrameDataManager:
 
     def _analyze_multi_timeframe_trend(
         self,
-        ohlcv_data: Dict[TimeFrame, pd.DataFrame],
-        indicators_data: Dict[TimeFrame, List[TechnicalIndicators]]
-    ) -> Dict[str, Any]:
+        ohlcv_data: dict[TimeFrame, pd.DataFrame],
+        indicators_data: dict[TimeFrame, list[TechnicalIndicators]]
+    ) -> dict[str, Any]:
         """分析多时间框架趋势"""
         trend_analysis = {}
 
@@ -513,7 +513,7 @@ class TimeFrameDataManager:
 
         return trend_analysis
 
-    def _identify_key_levels(self, df: Optional[pd.DataFrame]) -> Dict[str, Any]:
+    def _identify_key_levels(self, df: pd.DataFrame | None) -> dict[str, Any]:
         """识别关键价位"""
         if df is None or df.empty:
             return {}
@@ -550,7 +550,7 @@ class TimeFrameDataManager:
             "recent_low": recent_data['low'].min()
         }
 
-    def _analyze_momentum(self, indicators_data: Dict[TimeFrame, List[TechnicalIndicators]]) -> Dict[str, Any]:
+    def _analyze_momentum(self, indicators_data: dict[TimeFrame, list[TechnicalIndicators]]) -> dict[str, Any]:
         """分析动能指标"""
         momentum_analysis = {}
 
@@ -618,7 +618,7 @@ class TimeFrameDataManager:
         else:
             return "neutral"
 
-    def _analyze_volatility(self, ohlcv_data: Dict[TimeFrame, pd.DataFrame]) -> Dict[str, Any]:
+    def _analyze_volatility(self, ohlcv_data: dict[TimeFrame, pd.DataFrame]) -> dict[str, Any]:
         """分析波动性"""
         volatility_analysis = {}
 
@@ -656,7 +656,7 @@ class TimeFrameDataManager:
         else:
             return "low"
 
-    def _summarize_recent_action(self, df: Optional[pd.DataFrame], lookback: int = 50) -> Dict[str, Any]:
+    def _summarize_recent_action(self, df: pd.DataFrame | None, lookback: int = 50) -> dict[str, Any]:
         """总结近期价格行为"""
         if df is None or df.empty or len(df) < lookback:
             return {}
@@ -689,7 +689,7 @@ class TimeFrameDataManager:
             "action_type": "trending_up" if price_change_pct > 2 else "trending_down" if price_change_pct < -2 else "sideways"
         }
 
-    def _generate_technical_summary(self, indicators_data: Dict[TimeFrame, List[TechnicalIndicators]]) -> Dict[str, Any]:
+    def _generate_technical_summary(self, indicators_data: dict[TimeFrame, list[TechnicalIndicators]]) -> dict[str, Any]:
         """生成技术分析摘要"""
         summary = {
             "overall_signal": "neutral",
@@ -773,7 +773,7 @@ class TimeFrameDataManager:
         else:
             return "neutral"
 
-    def _calculate_risk_metrics(self, ohlcv_data: Dict[TimeFrame, pd.DataFrame]) -> Dict[str, Any]:
+    def _calculate_risk_metrics(self, ohlcv_data: dict[TimeFrame, pd.DataFrame]) -> dict[str, Any]:
         """计算风险指标"""
         risk_metrics = {}
 
@@ -816,7 +816,7 @@ class TimeFrameDataManager:
         self.indicators_cache.clear()
         logger.info("已清空时间维度数据缓存")
 
-    def get_cache_status(self) -> Dict[str, Any]:
+    def get_cache_status(self) -> dict[str, Any]:
         """获取缓存状态"""
         cache_info = {
             "data_cache_size": sum(len(timeframes) for timeframes in self.data_cache.values()),

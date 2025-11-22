@@ -5,7 +5,7 @@
 """
 
 import logging
-from typing import Dict, Any, Optional, List, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from datetime import datetime, timedelta
 import asyncio
 from dataclasses import dataclass
@@ -31,13 +31,13 @@ class MarketDataSource(Protocol):
         """数据源描述"""
         ...
 
-    async def get_realtime_price(self, symbol: str) -> Optional[float]:
+    async def get_realtime_price(self, symbol: str) -> float | None:
         """获取实时价格"""
         ...
 
     async def get_kline_data(
         self, symbol: str, period: str = "5m", count: int = 100
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """获取K线数据"""
         ...
 
@@ -52,13 +52,13 @@ class DataSourceStatus:
     name: str
     available: bool
     description: str
-    response_time_ms: Optional[float] = None
+    response_time_ms: float | None = None
 
 
 class TushareDataSource:
     """Tushare数据源实现（Pro接口）"""
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str | None = None):
         self._name = "Tushare"
         self._description = "Tushare Pro 接口"
 
@@ -100,7 +100,7 @@ class TushareDataSource:
     def is_available(self) -> bool:
         return bool(self._token and self._ts and self._token_valid)
 
-    async def get_realtime_price(self, symbol: str) -> Optional[float]:
+    async def get_realtime_price(self, symbol: str) -> float | None:
         """获取实时价格（占位实现）"""
         try:
             if not self.is_available():
@@ -114,7 +114,7 @@ class TushareDataSource:
 
     async def get_kline_data(
         self, symbol: str, period: str = "5m", count: int = 100
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """获取K线数据（支持分钟线和日线）"""
         try:
             if not self.is_available():
@@ -209,7 +209,7 @@ class TushareDataSource:
             logger.error(f"Tushare获取K线数据失败 ({symbol}, {period}): {e}")
             return None
 
-    def _to_ts_main_symbol(self, symbol: str) -> Optional[str]:
+    def _to_ts_main_symbol(self, symbol: str) -> str | None:
         """将品种映射为Tushare主连代码，简化版本"""
         try:
             if not symbol:
@@ -250,9 +250,9 @@ class MarketDataManager:
     def __init__(self, db_manager=None, mode: str = "dev"):
         self.db_manager = db_manager
         self.mode = mode  # 'live' or 'dev'
-        self.data_sources: List[MarketDataSource] = []
-        self.primary_source: Optional[MarketDataSource] = None
-        self.fallback_sources: List[MarketDataSource] = []
+        self.data_sources: list[MarketDataSource] = []
+        self.primary_source: MarketDataSource | None = None
+        self.fallback_sources: list[MarketDataSource] = []
 
     def add_data_source(self, source: MarketDataSource, is_primary: bool = False):
         """添加数据源"""
@@ -273,7 +273,7 @@ class MarketDataManager:
         # 为保持向后兼容，这里不做任何数据源变更，仅返回 True
         return True
 
-    async def _get_price_from_db(self, symbol: str) -> Optional[float]:
+    async def _get_price_from_db(self, symbol: str) -> float | None:
         """从数据库获取最新价格（live模式）"""
         if not self.db_manager:
             return None
@@ -297,7 +297,7 @@ class MarketDataManager:
             logger.error(f"从数据库获取价格失败: {e}")
             return None
 
-    async def get_realtime_price(self, symbol: str) -> Optional[float]:
+    async def get_realtime_price(self, symbol: str) -> float | None:
         """获取实时价格 - 支持双模式和多数据源切换"""
 
         # Live模式：优先从数据库读取（RealtimeRecorder写入的实时数据）
@@ -340,7 +340,7 @@ class MarketDataManager:
 
     async def get_kline_data(
         self, symbol: str, period: str = "5m", count: int = 100
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """获取K线数据 - 支持多数据源切换"""
 
         # 优先使用主数据源
@@ -369,7 +369,7 @@ class MarketDataManager:
         logger.error("所有数据源都无法获取K线数据")
         return None
 
-    def get_data_sources_status(self) -> List[DataSourceStatus]:
+    def get_data_sources_status(self) -> list[DataSourceStatus]:
         """获取数据源状态"""
         statuses = []
 
@@ -414,7 +414,7 @@ class SimNowDataSource:
         """检查SimNow是否可用"""
         return bool(self.userid and self.password)
 
-    async def get_realtime_price(self, symbol: str) -> Optional[float]:
+    async def get_realtime_price(self, symbol: str) -> float | None:
         """获取实时价格"""
         try:
             # 动态导入以避免循环依赖
@@ -457,7 +457,7 @@ class SimNowDataSource:
 
     async def get_kline_data(
         self, symbol: str, period: str = "5m", count: int = 100
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """获取K线数据"""
         # SimNow (CTP) 本身不提供历史K线数据下载
         # 实时交易中，K线通常由 RealtimeRecorder 聚合
@@ -469,8 +469,8 @@ class SimNowDataSource:
 def create_default_data_manager(
     db_manager=None,
     *,
-    data_mode: Optional[str] = None,
-    tushare_token: Optional[str] = None,
+    data_mode: str | None = None,
+    tushare_token: str | None = None,
 ) -> MarketDataManager:
     """创建默认的数据管理器（支持双模式）
 
@@ -528,7 +528,7 @@ def create_simnow_data_manager(
     userid: str,
     password: str,
     *,
-    tushare_token: Optional[str] = None,
+    tushare_token: str | None = None,
 ) -> MarketDataManager:
     """创建Simnow数据管理器"""
     manager = MarketDataManager()

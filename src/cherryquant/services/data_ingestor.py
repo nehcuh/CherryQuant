@@ -13,7 +13,6 @@ Data Ingestor Service
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, List
 
 
 # import akshare as ak  # 已废弃，使用 QuantBox 替代
@@ -54,8 +53,8 @@ def _ak_code(exchange: str, symbol: str) -> str:
         return (symbol or "").upper()
 
 
-def _to_points(df) -> List[MarketDataPoint]:
-    points: List[MarketDataPoint] = []
+def _to_points(df) -> list[MarketDataPoint]:
+    points: list[MarketDataPoint] = []
     for _, row in df.iterrows():
         ts = row["datetime"] if "datetime" in df.columns else datetime.now()
         points.append(
